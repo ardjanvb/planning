@@ -1,0 +1,179 @@
+@page "/beheer/medewerkers"
+@inject SessionState Session
+@inject NavigationManager Nav
+@inject IMasterDataService Master
+@inject ISnackbar Snackbar
+
+@if (!Session.CanManageMasterData)
+{
+    <MudAlert Severity="Severity.Warning">Geen toegang.</MudAlert>
+}
+else
+{
+    <MudStack Row="true" Justify="Justify.SpaceBetween" Class="mb-3">
+        <MudText Typo="Typo.h4">Medewerkers</MudText>
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="NewItem">Nieuw</MudButton>
+    </MudStack>
+
+    <MudTable Items="_items" Dense="true" Hover="true" Filter="new Func<Employee,bool>(Filter)">
+        <ToolBarContent>
+            <MudTextField @bind-Value="_search" Placeholder="Zoeken..." Adornment="Adornment.Start"
+                          AdornmentIcon="@Icons.Material.Filled.Search" Immediate="true" Class="mt-0" />
+            <MudSwitch @bind-Value="_includeInactive" Label="Inactief tonen" Color="Color.Primary" Class="ml-4" />
+            <MudButton OnClick="Load" Class="ml-2">Vernieuwen</MudButton>
+        </ToolBarContent>
+        <HeaderContent>
+            <MudTh>Nr</MudTh>
+            <MudTh>Naam</MudTh>
+            <MudTh>Functie</MudTh>
+            <MudTh>Ploeg</MudTh>
+            <MudTh>Contract</MudTh>
+            <MudTh>BHV</MudTh>
+            <MudTh>Kwalificaties</MudTh>
+            <MudTh></MudTh>
+        </HeaderContent>
+        <RowTemplate>
+            <MudTd>@context.PersonnelNumber</MudTd>
+            <MudTd>@context.DisplayName</MudTd>
+            <MudTd>@context.PrimaryJobFunction?.Name</MudTd>
+            <MudTd>@context.PrimaryCrew?.Name</MudTd>
+            <MudTd>@context.ContractHoursPerWeek.ToString("0.##")u</MudTd>
+            <MudTd>@(context.IsBhv ? $"Ja ({context.BhvValidUntil:dd-MM-yyyy})" : "Nee")</MudTd>
+            <MudTd>@string.Join(", ", context.Qualifications.Select(q => q.Qualification?.Name))</MudTd>
+            <MudTd><MudIconButton Icon="@Icons.Material.Filled.Edit" OnClick="@(() => Edit(context))" /></MudTd>
+        </RowTemplate>
+    </MudTable>
+
+    <MudDialog @bind-Visible="_dialog" Options="new DialogOptions { MaxWidth = MaxWidth.Medium, FullWidth = true }">
+        <TitleContent>@( _edit.Id == 0 ? "Nieuwe medewerker" : "Medewerker bewerken")</TitleContent>
+        <DialogContent>
+            <MudTextField @bind-Value="_edit.PersonnelNumber" Label="Personeelsnummer" Variant="Variant.Outlined" Class="mb-2" />
+            <MudStack Row="true">
+                <MudTextField @bind-Value="_edit.FirstName" Label="Voornaam" Variant="Variant.Outlined" Class="mb-2 flex-grow-1" />
+                <MudTextField @bind-Value="_edit.LastName" Label="Achternaam" Variant="Variant.Outlined" Class="mb-2 flex-grow-1" />
+            </MudStack>
+            <MudSelect T="int?" @bind-Value="_edit.PrimaryJobFunctionId" Label="Functie" Variant="Variant.Outlined" Class="mb-2" Clearable="true">
+                @foreach (var f in _functions)
+                {
+                    <MudSelectItem T="int?" Value="@((int?)f.Id)">@f.Name</MudSelectItem>
+                }
+            </MudSelect>
+            <MudSelect T="int?" @bind-Value="_edit.PrimaryCrewId" Label="Primaire ploeg" Variant="Variant.Outlined" Class="mb-2" Clearable="true">
+                @foreach (var c in _crews)
+                {
+                    <MudSelectItem T="int?" Value="@((int?)c.Id)">@c.Name</MudSelectItem>
+                }
+            </MudSelect>
+            <MudSelect T="int?" @bind-Value="_edit.PrimaryWorkplaceId" Label="Primaire werkplek" Variant="Variant.Outlined" Class="mb-2" Clearable="true">
+                @foreach (var w in _workplaces)
+                {
+                    <MudSelectItem T="int?" Value="@((int?)w.Id)">@w.ExternalNumber — @w.Name</MudSelectItem>
+                }
+            </MudSelect>
+            <MudStack Row="true">
+                <MudNumericField T="decimal" @bind-Value="_edit.ContractHoursPerWeek" Label="Contracturen" Variant="Variant.Outlined" />
+                <MudNumericField T="decimal" @bind-Value="_edit.Fte" Label="FTE" Variant="Variant.Outlined" />
+            </MudStack>
+            <MudSwitch @bind-Value="_edit.IsBhv" Label="BHV'er" Color="Color.Primary" Class="mt-2" />
+            <MudDatePicker Date="_bhvDate" DateChanged="OnBhvDate" Label="BHV geldig tot" Variant="Variant.Outlined" Class="mb-2" />
+            <MudSwitch @bind-Value="_edit.Active" Label="Actief" Color="Color.Primary" />
+            <MudTextField @bind-Value="_edit.Remarks" Label="Opmerkingen" Variant="Variant.Outlined" Class="mb-2" />
+            <MudSelect T="int" MultiSelection="true" @bind-SelectedValues="_selectedQuals" Label="Kwalificaties" Variant="Variant.Outlined">
+                @foreach (var q in _qualifications)
+                {
+                    <MudSelectItem T="int" Value="q.Id">@q.Name</MudSelectItem>
+                }
+            </MudSelect>
+        </DialogContent>
+        <DialogActions>
+            <MudButton OnClick="@(() => _dialog = false)">Annuleren</MudButton>
+            <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="Save">Opslaan</MudButton>
+        </DialogActions>
+    </MudDialog>
+}
+
+@code {
+    private List<Employee> _items = [];
+    private List<JobFunction> _functions = [];
+    private List<Crew> _crews = [];
+    private List<Workplace> _workplaces = [];
+    private List<Qualification> _qualifications = [];
+    private Employee _edit = new();
+    private bool _dialog;
+    private bool _includeInactive;
+    private string _search = "";
+    private DateTime? _bhvDate;
+    private IReadOnlyCollection<int> _selectedQuals = Array.Empty<int>();
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (!Session.IsAuthenticated) { Nav.NavigateTo("/login"); return; }
+        _functions = await Master.GetJobFunctionsAsync();
+        _crews = await Master.GetCrewsAsync();
+        _workplaces = await Master.GetWorkplacesAsync();
+        _qualifications = await Master.GetQualificationsAsync();
+        await Load();
+    }
+
+    private async Task Load() => _items = await Master.GetEmployeesAsync(_includeInactive);
+
+    private bool Filter(Employee e) =>
+        string.IsNullOrWhiteSpace(_search) ||
+        e.DisplayName.Contains(_search, StringComparison.OrdinalIgnoreCase) ||
+        e.PersonnelNumber.Contains(_search, StringComparison.OrdinalIgnoreCase);
+
+    private void NewItem()
+    {
+        _edit = new Employee { Active = true, ContractHoursPerWeek = 40, Fte = 1 };
+        _selectedQuals = Array.Empty<int>();
+        _bhvDate = null;
+        _dialog = true;
+    }
+
+    private void Edit(Employee e)
+    {
+        _edit = new Employee
+        {
+            Id = e.Id,
+            PersonnelNumber = e.PersonnelNumber,
+            FirstName = e.FirstName,
+            LastName = e.LastName,
+            PrimaryJobFunctionId = e.PrimaryJobFunctionId,
+            PrimaryCrewId = e.PrimaryCrewId,
+            PrimaryWorkplaceId = e.PrimaryWorkplaceId,
+            Active = e.Active,
+            IsBhv = e.IsBhv,
+            BhvValidUntil = e.BhvValidUntil,
+            ContractHoursPerWeek = e.ContractHoursPerWeek,
+            Fte = e.Fte,
+            Remarks = e.Remarks,
+            EmploymentStart = e.EmploymentStart,
+            EmploymentEnd = e.EmploymentEnd
+        };
+        _selectedQuals = e.Qualifications.Select(q => q.QualificationId).ToList();
+        _bhvDate = e.BhvValidUntil?.ToDateTime(TimeOnly.MinValue);
+        _dialog = true;
+    }
+
+    private void OnBhvDate(DateTime? value)
+    {
+        _bhvDate = value;
+        _edit.BhvValidUntil = value.HasValue ? DateOnly.FromDateTime(value.Value) : null;
+    }
+
+    private async Task Save()
+    {
+        try
+        {
+            var saved = await Master.SaveEmployeeAsync(_edit, Session.UserNameOrSystem);
+            await Master.SetEmployeeQualificationsAsync(saved.Id, _selectedQuals, Session.UserNameOrSystem);
+            _dialog = false;
+            Snackbar.Add("Opgeslagen", Severity.Success);
+            await Load();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add(ex.Message, Severity.Error);
+        }
+    }
+}

@@ -1,0 +1,225 @@
+@page "/versies"
+@inject SessionState Session
+@inject NavigationManager Nav
+@inject IPlanningService Planning
+@inject ISnackbar Snackbar
+
+@if (!Session.IsAuthenticated)
+{
+    <MudAlert Severity="Severity.Warning">Log eerst in.</MudAlert>
+}
+else
+{
+    <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center" Class="mb-3">
+        <MudText Typo="Typo.h4">Gepubliceerde versies</MudText>
+        <MudStack Row="true" Spacing="2">
+            <MudNumericField T="int" @bind-Value="_year" Label="Jaar" Variant="Variant.Outlined" Margin="Margin.Dense" Style="width:110px" />
+            <MudNumericField T="int" @bind-Value="_week" Label="Week" Variant="Variant.Outlined" Margin="Margin.Dense" Style="width:90px" />
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="Load">Laden</MudButton>
+        </MudStack>
+    </MudStack>
+
+    <MudPaper Class="pa-3 mb-4" Elevation="1">
+        <MudText Typo="Typo.h6" Class="mb-2">Snapshots week @_week / @_year</MudText>
+        @if (_snapshots.Count == 0)
+        {
+            <MudAlert Severity="Severity.Info" Dense="true">Nog geen gepubliceerde snapshots voor deze week.</MudAlert>
+        }
+        else
+        {
+            <MudTable Items="_snapshots" Dense="true" Hover="true">
+                <HeaderContent>
+                    <MudTh>Versie</MudTh>
+                    <MudTh>Status</MudTh>
+                    <MudTh>Gepubliceerd</MudTh>
+                    <MudTh>Door</MudTh>
+                    <MudTh>Toewijzingen</MudTh>
+                    <MudTh></MudTh>
+                </HeaderContent>
+                <RowTemplate>
+                    <MudTd>v@context.Version</MudTd>
+                    <MudTd>@context.Status</MudTd>
+                    <MudTd>@context.CreatedAt.ToLocalTime().ToString("g")</MudTd>
+                    <MudTd>@context.CreatedBy</MudTd>
+                    <MudTd>@context.AssignmentCount</MudTd>
+                    <MudTd>
+                        <MudIconButton Icon="@Icons.Material.Filled.Visibility" Size="Size.Small"
+                                       OnClick="@(() => ShowSnapshot(context.Id))" aria-label="Bekijken" />
+                    </MudTd>
+                </RowTemplate>
+            </MudTable>
+        }
+    </MudPaper>
+
+    <MudPaper Class="pa-3 mb-4" Elevation="1">
+        <MudText Typo="Typo.h6" Class="mb-2">Versies vergelijken</MudText>
+        <MudStack Row="true" AlignItems="AlignItems.End" Class="mb-3">
+            <MudSelect T="int?" @bind-Value="_leftId" Label="Oudere / linker versie" Variant="Variant.Outlined" Style="min-width:220px" Clearable="true">
+                @foreach (var s in _snapshots)
+                {
+                    <MudSelectItem T="int?" Value="@((int?)s.Id)">v@s.Version — @s.CreatedAt.ToLocalTime().ToString("g")</MudSelectItem>
+                }
+            </MudSelect>
+            <MudSelect T="int?" @bind-Value="_rightId" Label="Nieuwere / rechter versie" Variant="Variant.Outlined" Style="min-width:220px" Clearable="true">
+                @foreach (var s in _snapshots)
+                {
+                    <MudSelectItem T="int?" Value="@((int?)s.Id)">v@s.Version — @s.CreatedAt.ToLocalTime().ToString("g")</MudSelectItem>
+                }
+            </MudSelect>
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="Compare" Disabled="@(_leftId is null || _rightId is null)">Vergelijken</MudButton>
+        </MudStack>
+
+        @if (_compare is not null)
+        {
+            <MudText Typo="Typo.subtitle2" Class="mb-2">
+                v@_compare.Left.Version → v@_compare.Right.Version
+            </MudText>
+            <MudGrid>
+                <MudItem xs="12" md="4">
+                    <MudText Typo="Typo.subtitle1" Class="mb-1">Alleen in v@_compare.Left.Version (@_compare.OnlyInLeft.Count)</MudText>
+                    <MudTable Items="_compare.OnlyInLeft" Dense="true" Hover="true" Style="max-height:320px;overflow:auto">
+                        <HeaderContent>
+                            <MudTh>Dag</MudTh>
+                            <MudTh>Werkplek</MudTh>
+                            <MudTh>Medewerker</MudTh>
+                            <MudTh>Shift</MudTh>
+                        </HeaderContent>
+                        <RowTemplate>
+                            <MudTd>@context.Date.ToString("dd-MM")</MudTd>
+                            <MudTd>@context.WorkplaceName</MudTd>
+                            <MudTd>@(context.EmployeeName ?? "—")</MudTd>
+                            <MudTd>@context.ShiftName</MudTd>
+                        </RowTemplate>
+                    </MudTable>
+                </MudItem>
+                <MudItem xs="12" md="4">
+                    <MudText Typo="Typo.subtitle1" Class="mb-1">Alleen in v@_compare.Right.Version (@_compare.OnlyInRight.Count)</MudText>
+                    <MudTable Items="_compare.OnlyInRight" Dense="true" Hover="true" Style="max-height:320px;overflow:auto">
+                        <HeaderContent>
+                            <MudTh>Dag</MudTh>
+                            <MudTh>Werkplek</MudTh>
+                            <MudTh>Medewerker</MudTh>
+                            <MudTh>Shift</MudTh>
+                        </HeaderContent>
+                        <RowTemplate>
+                            <MudTd>@context.Date.ToString("dd-MM")</MudTd>
+                            <MudTd>@context.WorkplaceName</MudTd>
+                            <MudTd>@(context.EmployeeName ?? "—")</MudTd>
+                            <MudTd>@context.ShiftName</MudTd>
+                        </RowTemplate>
+                    </MudTable>
+                </MudItem>
+                <MudItem xs="12" md="4">
+                    <MudText Typo="Typo.subtitle1" Class="mb-1">Ongewijzigd (@_compare.Unchanged.Count)</MudText>
+                    <MudTable Items="_compare.Unchanged" Dense="true" Hover="true" Style="max-height:320px;overflow:auto">
+                        <HeaderContent>
+                            <MudTh>Dag</MudTh>
+                            <MudTh>Werkplek</MudTh>
+                            <MudTh>Medewerker</MudTh>
+                            <MudTh>Shift</MudTh>
+                        </HeaderContent>
+                        <RowTemplate>
+                            <MudTd>@context.Date.ToString("dd-MM")</MudTd>
+                            <MudTd>@context.WorkplaceName</MudTd>
+                            <MudTd>@(context.EmployeeName ?? "—")</MudTd>
+                            <MudTd>@context.ShiftName</MudTd>
+                        </RowTemplate>
+                    </MudTable>
+                </MudItem>
+            </MudGrid>
+        }
+    </MudPaper>
+
+    <MudDialog @bind-Visible="_showDetail">
+        <TitleContent>Snapshot v@_detailVersion</TitleContent>
+        <DialogContent>
+            <MudTable Items="_detailAssignments" Dense="true" Hover="true" Style="max-height:420px;overflow:auto">
+                <HeaderContent>
+                    <MudTh>Dag</MudTh>
+                    <MudTh>Werkplek</MudTh>
+                    <MudTh>Medewerker</MudTh>
+                    <MudTh>Shift</MudTh>
+                    <MudTh>Uren</MudTh>
+                </HeaderContent>
+                <RowTemplate>
+                    <MudTd>@context.Date.ToString("ddd dd-MM")</MudTd>
+                    <MudTd>@context.WorkplaceName</MudTd>
+                    <MudTd>@(context.EmployeeName ?? "—")</MudTd>
+                    <MudTd>@context.ShiftName</MudTd>
+                    <MudTd>@context.PlannedHours.ToString("0.##")</MudTd>
+                </RowTemplate>
+            </MudTable>
+        </DialogContent>
+        <DialogActions>
+            <MudButton OnClick="@(() => _showDetail = false)">Sluiten</MudButton>
+        </DialogActions>
+    </MudDialog>
+}
+
+@code {
+    private int _year;
+    private int _week;
+    private List<WeekPlanSnapshotInfo> _snapshots = [];
+    private int? _leftId;
+    private int? _rightId;
+    private VersionCompareResult? _compare;
+    private bool _showDetail;
+    private int _detailVersion;
+    private List<SnapshotAssignmentDto> _detailAssignments = [];
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (!Session.IsAuthenticated) { Nav.NavigateTo("/login"); return; }
+        (_year, _week) = WeekHelper.CurrentIsoWeek();
+        await Load();
+    }
+
+    private async Task Load()
+    {
+        try
+        {
+            _snapshots = (await Planning.GetSnapshotsAsync(_year, _week)).ToList();
+            _compare = null;
+            _leftId = _snapshots.ElementAtOrDefault(1)?.Id;
+            _rightId = _snapshots.ElementAtOrDefault(0)?.Id;
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add(ex.Message, Severity.Error);
+        }
+    }
+
+    private async Task ShowSnapshot(int snapshotId)
+    {
+        try
+        {
+            var info = _snapshots.First(s => s.Id == snapshotId);
+            _detailVersion = info.Version;
+            _detailAssignments = (await Planning.GetSnapshotAssignmentsAsync(snapshotId)).ToList();
+            _showDetail = true;
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add(ex.Message, Severity.Error);
+        }
+    }
+
+    private async Task Compare()
+    {
+        if (_leftId is null || _rightId is null) return;
+        if (_leftId == _rightId)
+        {
+            Snackbar.Add("Kies twee verschillende versies", Severity.Warning);
+            return;
+        }
+
+        try
+        {
+            _compare = await Planning.CompareSnapshotsAsync(_leftId.Value, _rightId.Value);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add(ex.Message, Severity.Error);
+        }
+    }
+}

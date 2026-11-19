@@ -1,0 +1,70 @@
+@page "/login"
+@inject IAuthService Auth
+@inject SessionState Session
+@inject NavigationManager Nav
+@inject ISnackbar Snackbar
+
+<div class="d-flex justify-content-center align-items-center" style="min-height: 80vh;">
+    <MudPaper Class="pa-8" Elevation="3" Style="width: 420px; max-width: 95vw;">
+        <MudText Typo="Typo.h4" GutterBottom="true">Inloggen</MudText>
+        <MudText Typo="Typo.body2" Class="mud-text-secondary mb-4">
+            Personeels- en capaciteitsplanning Metalektro
+        </MudText>
+        @if (!string.IsNullOrEmpty(_error))
+        {
+            <MudAlert Severity="Severity.Error" Class="mb-3">@_error</MudAlert>
+        }
+        <MudTextField @bind-Value="_username" Label="Gebruikersnaam" Variant="Variant.Outlined"
+                      Immediate="true" Class="mb-3" />
+        <MudTextField @bind-Value="_password" Label="Wachtwoord" Variant="Variant.Outlined"
+                      InputType="InputType.Password" Immediate="true" Class="mb-4"
+                      OnKeyUp="OnKey" />
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" FullWidth="true" OnClick="Submit" Disabled="_busy">
+            Inloggen
+        </MudButton>
+        <MudText Typo="Typo.caption" Align="Align.Center" Class="mud-text-secondary mt-4">
+            Demo: beheerder / planner / teamleider / leiding — wachtwoord Demo123!
+        </MudText>
+    </MudPaper>
+</div>
+
+@code {
+    private string _username = "planner";
+    private string _password = "Demo123!";
+    private string _error = "";
+    private bool _busy;
+
+    protected override void OnInitialized()
+    {
+        if (Session.IsAuthenticated)
+            Nav.NavigateTo("/");
+    }
+
+    private async Task OnKey(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter")
+            await Submit();
+    }
+
+    private async Task Submit()
+    {
+        _busy = true;
+        _error = "";
+        try
+        {
+            var (ok, message, user) = await Auth.LoginAsync(_username.Trim(), _password);
+            if (!ok || user is null)
+            {
+                _error = message;
+                return;
+            }
+            Session.SetUser(user);
+            Snackbar.Add($"Welkom {user.DisplayName}", Severity.Success);
+            Nav.NavigateTo("/");
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+}

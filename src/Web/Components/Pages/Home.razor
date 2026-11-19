@@ -1,0 +1,528 @@
+@page "/"
+@inject SessionState Session
+@inject NavigationManager Nav
+@inject IPlanningService Planning
+@inject IMasterDataService MasterData
+@inject ISnackbar Snackbar
+@inject IDialogService DialogService
+
+@if (!Session.IsAuthenticated)
+{
+    <MudAlert Severity="Severity.Warning">Log eerst in via <MudLink Href="/login">/login</MudLink>.</MudAlert>
+}
+else if (_overview is null)
+{
+    <MudProgressLinear Indeterminate="true" />
+}
+else
+{
+    <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center" Class="mb-3">
+        <div>
+            <MudText Typo="Typo.h4">Planningsmatrix</MudText>
+            <MudText Typo="Typo.subtitle2" Class="mud-text-secondary">
+                Status: @_overview.Plan.Status · versie @_overview.Plan.Version
+            </MudText>
+        </div>
+        <MudStack Row="true" Spacing="2">
+            <MudNumericField T="int" @bind-Value="_year" Label="Jaar" Variant="Variant.Outlined" Margin="Margin.Dense" Style="width:110px" />
+            <MudNumericField T="int" @bind-Value="_week" Label="Week" Variant="Variant.Outlined" Margin="Margin.Dense" Style="width:90px" />
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="Reload">Laden</MudButton>
+            @if (Session.CanEditPlanning)
+            {
+                <MudButton Variant="Variant.Outlined" OnClick="CopyFromPrevious">Kopieer vorige week</MudButton>
+            }
+            <MudButton Variant="Variant.Text" Href="versies">Versies</MudButton>
+        </MudStack>
+    </MudStack>
+
+    <MudPaper Class="pa-2 mb-3" Elevation="0">
+        <MudStack Row="true" Spacing="2" AlignItems="AlignItems.End">
+            <MudTextField @bind-Value="_search" Label="Zoeken" Variant="Variant.Outlined" Margin="Margin.Dense"
+                          Adornment="Adornment.Start" AdornmentIcon="@Icons.Material.Filled.Search" Style="min-width:200px"
+                          Immediate="true" />
+            <MudSelect T="int?" @bind-Value="_departmentId" Label="Afdeling" Variant="Variant.Outlined" Margin="Margin.Dense"
+                       Clearable="true" Style="min-width:180px">
+                @foreach (var d in _departments)
+                {
+                    <MudSelectItem T="int?" Value="@((int?)d.Id)">@d.Name</MudSelectItem>
+                }
+            </MudSelect>
+            <MudSelect T="int?" @bind-Value="_crewId" Label="Ploeg" Variant="Variant.Outlined" Margin="Margin.Dense"
+                       Clearable="true" Style="min-width:160px">
+                @foreach (var c in _crews)
+                {
+                    <MudSelectItem T="int?" Value="@((int?)c.Id)">@c.Name</MudSelectItem>
+                }
+            </MudSelect>
+        </MudStack>
+    </MudPaper>
+
+    <MudGrid Class="mb-3">
+        <MudItem xs="12" md="8">
+            <MudPaper Class="pa-2" Elevation="1">
+                <MudTabs @bind-ActivePanelIndex="_tab">
+                    <MudTabPanel Text="@($"Per werkplek ({FilteredWorkplaces.Count})")">
+                        <MudTable Items="FilteredWorkplaces" Dense="true" Hover="true" Class="mt-2" Breakpoint="Breakpoint.None">
+                            <HeaderContent>
+                                <MudTh>Werkplek</MudTh>
+                                @foreach (var day in _overview.Days)
+                                {
+                                    <MudTh>@WeekHelper.DayLabel(day)<br /><small>@day.ToString("dd-MM")</small></MudTh>
+                                }
+                                <MudTh>Uren</MudTh>
+                            </HeaderContent>
+                            <RowTemplate>
+                                <MudTd DataLabel="Werkplek" id="@($"wp-row-{context.WorkplaceId}")"
+                                       Class="@RowHighlightClass(workplaceId: context.WorkplaceId)">
+                                    <strong>@context.ExternalNumber</strong><br />@context.WorkplaceName
+                                </MudTd>
+                                @foreach (var day in _overview.Days)
+                                {
+                                    var cell = context.Days[day];
+                                    <MudTd Class="@CellHighlightClass(workplaceId: context.WorkplaceId, date: day)"
+                                           id="@($"cell-wp-{context.WorkplaceId}-{day:yyyyMMdd}")">
+                                        @if (cell.ClosedShifts is { Count: > 0 })
+                                        {
+                                            @foreach (var shift in cell.ClosedShifts)
+                                            {
+                                                <MudChip T="string" Size="Size.Small" Color="Color.Default" Variant="Variant.Outlined" Class="ma-0 mb-1">
+                                                    @shift dicht
+                                                </MudChip>
+                                            }
+                                        }
+                                        @foreach (var a in cell.Assignments)
+                                        {
+                                            @RenderAssignmentChip($"{a.EmployeeName ?? "?"} · {a.ShiftName}", a)
+                                        }
+                                        @if (Session.CanEditPlanning && cell.CanAssign)
+                                        {
+                                            <MudIconButton Icon="@Icons.Material.Filled.Add" Size="Size.Small"
+                                                           OnClick="@(() => OpenAssignWorkplace(context.WorkplaceId, day))" />
+                                        }
+                                    </MudTd>
+                                }
+                                <MudTd>
+                                    <span class="@(context.PlannedHours < context.RequiredHours ? "text-danger" : "")">
+                                        @context.PlannedHours.ToString("0.##") / @context.RequiredHours.ToString("0.##")
+                                    </span>
+                                </MudTd>
+                            </RowTemplate>
+                        </MudTable>
+                    </MudTabPanel>
+                    <MudTabPanel Text="@($"Per medewerker ({FilteredEmployees.Count})")">
+                        <MudTable Items="FilteredEmployees" Dense="true" Hover="true" Class="mt-2" Breakpoint="Breakpoint.None">
+                            <HeaderContent>
+                                <MudTh>Medewerker</MudTh>
+                                @foreach (var day in _overview.Days)
+                                {
+                                    <MudTh>@WeekHelper.DayLabel(day)<br /><small>@day.ToString("dd-MM")</small></MudTh>
+                                }
+                                <MudTh>Totaal</MudTh>
+                            </HeaderContent>
+                            <RowTemplate>
+                                <MudTd id="@($"emp-row-{context.EmployeeId}")"
+                                       Class="@RowHighlightClass(employeeId: context.EmployeeId)">@context.EmployeeName</MudTd>
+                                @foreach (var day in _overview.Days)
+                                {
+                                    var cell = context.Days[day];
+                                    var employeeId = context.EmployeeId;
+                                    <MudTd Class="@CellHighlightClass(employeeId: employeeId, date: day)"
+                                           id="@($"cell-emp-{employeeId}-{day:yyyyMMdd}")">
+                                        @if (cell.HasApprovedAbsence)
+                                        {
+                                            @if (Session.CanEditPlanning)
+                                            {
+                                                <MudChip T="string" Size="Size.Small" Color="Color.Warning" Class="ma-0 mb-1"
+                                                         OnClose="@(async (MudChip<string> _) => await RemoveLeave(employeeId, day))">
+                                                    Verlof
+                                                </MudChip>
+                                            }
+                                            else
+                                            {
+                                                <MudChip T="string" Size="Size.Small" Color="Color.Warning" Class="ma-0 mb-1">
+                                                    Verlof
+                                                </MudChip>
+                                            }
+                                        }
+                                        @if (cell.ClosedShifts is { Count: > 0 } && cell.IsFullyClosed && !cell.HasApprovedAbsence)
+                                        {
+                                            <MudChip T="string" Size="Size.Small" Color="Color.Default" Variant="Variant.Outlined" Class="ma-0 mb-1">
+                                                Shifts dicht
+                                            </MudChip>
+                                        }
+                                        @foreach (var a in cell.Assignments)
+                                        {
+                                            @RenderAssignmentChip($"{a.WorkplaceName} · {a.ShiftName}", a)
+                                        }
+                                        @if (Session.CanEditPlanning && cell.CanAssign)
+                                        {
+                                            <MudIconButton Icon="@Icons.Material.Filled.Add" Size="Size.Small"
+                                                           OnClick="@(() => OpenAssignEmployee(employeeId, day))" />
+                                        }
+                                    </MudTd>
+                                }
+                                <MudTd>@context.PlannedHours.ToString("0.##") / @context.ContractHours.ToString("0.##")</MudTd>
+                            </RowTemplate>
+                        </MudTable>
+                    </MudTabPanel>
+                </MudTabs>
+            </MudPaper>
+        </MudItem>
+        <MudItem xs="12" md="4">
+            <MudPaper Class="pa-3 mb-3" Elevation="1">
+                <MudText Typo="Typo.h6">Waarschuwingen</MudText>
+                @if (_overview.Conflicts.Count == 0)
+                {
+                    <MudAlert Severity="Severity.Success" Dense="true" Class="mt-2">Geen openstaande conflicten</MudAlert>
+                }
+                else
+                {
+                    @foreach (var c in _overview.Conflicts.Take(20))
+                    {
+                        <div class="mt-2" style="cursor:pointer" @onclick="() => FocusConflict(c)">
+                            <MudAlert Severity="@(c.Severity == ConflictSeverity.Blocking ? Severity.Error : Severity.Warning)"
+                                      Dense="true">
+                                <strong>@c.Code</strong> — @c.Message
+                            </MudAlert>
+                        </div>
+                    }
+                }
+            </MudPaper>
+
+            @if (Session.CanEditPlanning || Session.CanApprove)
+            {
+                <MudPaper Class="pa-3" Elevation="1">
+                    <MudText Typo="Typo.h6" Class="mb-2">Status</MudText>
+                    <MudStack Spacing="1">
+                        @if (Session.CanEditPlanning)
+                        {
+                            <MudButton Variant="Variant.Outlined" OnClick="@(() => SetStatus(WeekPlanStatus.Checked))">Gecontroleerd</MudButton>
+                            <MudButton Variant="Variant.Outlined" OnClick="@(() => SetStatus(WeekPlanStatus.PendingApproval))">Ter goedkeuring</MudButton>
+                        }
+                        @if (Session.CanApprove)
+                        {
+                            <MudButton Variant="Variant.Filled" Color="Color.Success" OnClick="@(() => SetStatus(WeekPlanStatus.Approved))">Goedkeuren</MudButton>
+                            <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="@(() => SetStatus(WeekPlanStatus.Published))">Publiceren</MudButton>
+                        }
+                    </MudStack>
+                </MudPaper>
+            }
+        </MudItem>
+    </MudGrid>
+}
+
+@code {
+    private PlanningOverview? _overview;
+    private int _year;
+    private int _week;
+    private int _tab;
+    private List<Employee> _employees = [];
+    private List<Workplace> _workplaces = [];
+    private List<Department> _departments = [];
+    private List<Crew> _crews = [];
+    private string _search = string.Empty;
+    private int? _departmentId;
+    private int? _crewId;
+    private int? _highlightEmployeeId;
+    private int? _highlightWorkplaceId;
+    private DateOnly? _highlightDate;
+
+    private IReadOnlyList<WorkplaceWeekRow> FilteredWorkplaces
+    {
+        get
+        {
+            if (_overview is null) return [];
+            var q = _overview.ByWorkplace.AsEnumerable();
+            if (_departmentId is int deptId)
+            {
+                var ids = _workplaces.Where(w => w.DepartmentId == deptId).Select(w => w.Id).ToHashSet();
+                q = q.Where(r => ids.Contains(r.WorkplaceId));
+            }
+
+            if (!string.IsNullOrWhiteSpace(_search))
+            {
+                q = q.Where(r =>
+                    r.WorkplaceName.Contains(_search, StringComparison.CurrentCultureIgnoreCase) ||
+                    r.ExternalNumber.Contains(_search, StringComparison.CurrentCultureIgnoreCase));
+            }
+
+            return q.ToList();
+        }
+    }
+
+    private IReadOnlyList<EmployeeWeekRow> FilteredEmployees
+    {
+        get
+        {
+            if (_overview is null) return [];
+            var q = _overview.ByEmployee.AsEnumerable();
+            if (_crewId is int crewId)
+            {
+                var ids = _employees.Where(e => e.PrimaryCrewId == crewId).Select(e => e.Id).ToHashSet();
+                q = q.Where(r => ids.Contains(r.EmployeeId));
+            }
+
+            if (_departmentId is int deptId)
+            {
+                var workplaceIds = _workplaces.Where(w => w.DepartmentId == deptId).Select(w => w.Id).ToHashSet();
+                var empIds = _employees
+                    .Where(e => e.PrimaryWorkplaceId is int wp && workplaceIds.Contains(wp))
+                    .Select(e => e.Id)
+                    .ToHashSet();
+                q = q.Where(r => empIds.Contains(r.EmployeeId));
+            }
+
+            if (!string.IsNullOrWhiteSpace(_search))
+            {
+                q = q.Where(r => r.EmployeeName.Contains(_search, StringComparison.CurrentCultureIgnoreCase));
+            }
+
+            return q.ToList();
+        }
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (!Session.IsAuthenticated)
+        {
+            Nav.NavigateTo("/login");
+            return;
+        }
+        (_year, _week) = WeekHelper.CurrentIsoWeek();
+        _employees = await MasterData.GetEmployeesAsync();
+        _workplaces = await MasterData.GetWorkplacesAsync();
+        _departments = await MasterData.GetDepartmentsAsync();
+        _crews = await MasterData.GetCrewsAsync();
+        await Reload();
+    }
+
+    private async Task Reload()
+    {
+        _overview = await Planning.GetOverviewAsync(_year, _week);
+        ClearHighlight();
+    }
+
+    private void FocusConflict(ConflictItem c)
+    {
+        _highlightEmployeeId = c.EmployeeId;
+        _highlightWorkplaceId = c.WorkplaceId;
+        _highlightDate = c.Date;
+
+        if (c.EmployeeId.HasValue)
+        {
+            _tab = 1;
+            if (_crewId is not null || !string.IsNullOrWhiteSpace(_search) || _departmentId is not null)
+            {
+                // Ensure highlighted employee is visible
+                var emp = _employees.FirstOrDefault(e => e.Id == c.EmployeeId);
+                if (emp is not null)
+                {
+                    if (_crewId is not null && emp.PrimaryCrewId != _crewId) _crewId = null;
+                    if (!string.IsNullOrWhiteSpace(_search) &&
+                        !emp.DisplayName.Contains(_search, StringComparison.CurrentCultureIgnoreCase))
+                        _search = string.Empty;
+                }
+            }
+        }
+        else if (c.WorkplaceId.HasValue)
+        {
+            _tab = 0;
+        }
+
+        StateHasChanged();
+    }
+
+    private void ClearHighlight()
+    {
+        _highlightEmployeeId = null;
+        _highlightWorkplaceId = null;
+        _highlightDate = null;
+    }
+
+    private string RowHighlightClass(int? employeeId = null, int? workplaceId = null)
+    {
+        var hit = (employeeId.HasValue && employeeId == _highlightEmployeeId) ||
+                  (workplaceId.HasValue && workplaceId == _highlightWorkplaceId);
+        return hit ? "matrix-highlight-row" : string.Empty;
+    }
+
+    private string CellHighlightClass(DateOnly date, int? employeeId = null, int? workplaceId = null)
+    {
+        if (_highlightDate is null || _highlightDate != date) return string.Empty;
+        var hit = (employeeId.HasValue && employeeId == _highlightEmployeeId) ||
+                  (workplaceId.HasValue && workplaceId == _highlightWorkplaceId) ||
+                  (_highlightEmployeeId is null && _highlightWorkplaceId is null);
+        return hit ? "matrix-highlight-cell" : string.Empty;
+    }
+
+    private RenderFragment RenderAssignmentChip(string label, ShiftAssignmentDto assignment) => __builder =>
+    {
+        if (Session.CanEditPlanning)
+        {
+            <MudChip T="string" Size="Size.Small" Color="Color.Primary" Class="ma-0 mb-1"
+                     OnClick="@(() => MoveDialog(assignment))"
+                     OnClose="@(async (MudChip<string> _) => await Remove(assignment.Id))">
+                @label
+            </MudChip>
+        }
+        else
+        {
+            <MudChip T="string" Size="Size.Small" Color="Color.Primary" Class="ma-0 mb-1">
+                @label
+            </MudChip>
+        }
+    };
+
+    private Task OpenAssignWorkplace(int workplaceId, DateOnly date) =>
+        OpenAssign(AssignDialog.AssignMode.FromWorkplace, workplaceId, 0, date);
+
+    private Task OpenAssignEmployee(int employeeId, DateOnly date) =>
+        OpenAssign(AssignDialog.AssignMode.FromEmployee, 0, employeeId, date);
+
+    private async Task OpenAssign(AssignDialog.AssignMode mode, int workplaceId, int employeeId, DateOnly date)
+    {
+        var closed = _overview!.ClosedShiftsByDate.GetValueOrDefault(date) ?? [];
+        var availableEmployees = mode == AssignDialog.AssignMode.FromWorkplace
+            ? _employees.Where(e =>
+            {
+                var row = _overview.ByEmployee.FirstOrDefault(r => r.EmployeeId == e.Id);
+                return row is null || !row.Days[date].HasApprovedAbsence;
+            }).ToList()
+            : _employees;
+
+        if (mode == AssignDialog.AssignMode.FromEmployee)
+        {
+            var empRow = _overview.ByEmployee.FirstOrDefault(r => r.EmployeeId == employeeId);
+            if (empRow?.Days[date].HasApprovedAbsence == true)
+            {
+                Snackbar.Add("Medewerker heeft verlof op deze dag.", Severity.Warning);
+                return;
+            }
+        }
+
+        if (closed.Count > 0 && PlanningConstants.StandardShifts.All(s =>
+                closed.Any(c => string.Equals(c, s, StringComparison.OrdinalIgnoreCase))))
+        {
+            Snackbar.Add("Alle shifts zijn gesloten op deze dag.", Severity.Warning);
+            return;
+        }
+
+        var parameters = new DialogParameters
+        {
+            ["Mode"] = mode,
+            ["Employees"] = availableEmployees,
+            ["Workplaces"] = _workplaces,
+            ["WorkplaceId"] = workplaceId,
+            ["EmployeeId"] = employeeId,
+            ["Date"] = date,
+            ["ClosedShifts"] = closed.ToList()
+        };
+        var title = mode == AssignDialog.AssignMode.FromWorkplace ? "Medewerker toewijzen" : "Werkplek toewijzen";
+        var dialog = await DialogService.ShowAsync<AssignDialog>(title, parameters);
+        var result = await dialog.Result;
+        if (result is null || result.Canceled || result.Data is not AssignDialog.AssignModel model)
+            return;
+
+        try
+        {
+            await Planning.AssignAsync(new AssignRequest(
+                _overview!.Plan.Id,
+                date,
+                model.WorkplaceId,
+                model.EmployeeId,
+                model.ShiftName,
+                model.StartTime,
+                model.EndTime,
+                model.Hours,
+                model.OverrideReason), Session.UserNameOrSystem);
+            Snackbar.Add($"Toegewezen: {model.ShiftName}", Severity.Success);
+            await Reload();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add(ex.Message, Severity.Error);
+        }
+    }
+
+    private async Task Remove(int assignmentId)
+    {
+        try
+        {
+            await Planning.RemoveAssignmentAsync(assignmentId, Session.UserNameOrSystem);
+            await Reload();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add(ex.Message, Severity.Error);
+        }
+    }
+
+    private async Task RemoveLeave(int employeeId, DateOnly date)
+    {
+        try
+        {
+            await MasterData.RemoveAbsenceForDayAsync(employeeId, date, Session.UserNameOrSystem);
+            Snackbar.Add("Verlof verwijderd voor deze dag", Severity.Success);
+            await Reload();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add(ex.Message, Severity.Error);
+        }
+    }
+
+    private async Task MoveDialog(ShiftAssignmentDto assignment)
+    {
+        if (!Session.CanEditPlanning) return;
+        var parameters = new DialogParameters
+        {
+            ["Assignment"] = assignment,
+            ["Workplaces"] = _workplaces,
+            ["Days"] = _overview!.Days
+        };
+        var dialog = await DialogService.ShowAsync<MoveDialog>("Verplaatsen", parameters);
+        var result = await dialog.Result;
+        if (result is null || result.Canceled || result.Data is not MoveDialog.MoveModel model)
+            return;
+        try
+        {
+            await Planning.MoveAssignmentAsync(assignment.Id, model.WorkplaceId, model.Date, Session.UserNameOrSystem);
+            await Reload();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add(ex.Message, Severity.Error);
+        }
+    }
+
+    private async Task CopyFromPrevious()
+    {
+        var prev = DateOnly.FromDateTime(System.Globalization.ISOWeek.ToDateTime(_year, _week, DayOfWeek.Monday)).AddDays(-7);
+        var py = System.Globalization.ISOWeek.GetYear(prev.ToDateTime(TimeOnly.MinValue));
+        var pw = System.Globalization.ISOWeek.GetWeekOfYear(prev.ToDateTime(TimeOnly.MinValue));
+        try
+        {
+            await Planning.CopyWeekAsync(py, pw, _year, _week, Session.UserNameOrSystem);
+            Snackbar.Add($"Week {pw} gekopieerd", Severity.Success);
+            await Reload();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add(ex.Message, Severity.Error);
+        }
+    }
+
+    private async Task SetStatus(WeekPlanStatus status)
+    {
+        try
+        {
+            await Planning.ChangeStatusAsync(_overview!.Plan.Id, status, Session.UserNameOrSystem);
+            Snackbar.Add($"Status: {status}", Severity.Success);
+            await Reload();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add(ex.Message, Severity.Error);
+        }
+    }
+}

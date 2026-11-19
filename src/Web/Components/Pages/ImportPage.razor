@@ -1,0 +1,147 @@
+@page "/import"
+@inject SessionState Session
+@inject NavigationManager Nav
+@inject IImportService Import
+@inject ISnackbar Snackbar
+@inject IJSRuntime Js
+
+@if (!Session.IsAuthenticated || !Session.CanImport)
+{
+    <MudAlert Severity="Severity.Warning">Geen toegang tot import.</MudAlert>
+}
+else
+{
+    <MudText Typo="Typo.h4" Class="mb-3">Import productieplanning</MudText>
+    <MudText Typo="Typo.body2" Class="mb-3 mud-text-secondary">
+        Verwachte kolommen: Jaar, Weeknummer, Werkpleknummer, AantalBenodigdeShifts, UrenPerShift (optioneel: Datum).
+        CSV of Excel. Bestaande personeelsindelingen worden niet overschreven.
+    </MudText>
+
+    <MudPaper Class="pa-4 mb-4" Elevation="1">
+        <InputFile OnChange="OnFile" accept=".csv,.xlsx,.xls" />
+        @if (_fileName is not null)
+        {
+            <MudText Class="mt-2">Bestand: @_fileName</MudText>
+        }
+        <MudStack Row="true" Class="mt-3" Spacing="2">
+            <MudButton Variant="Variant.Outlined" OnClick="DoPreview" Disabled="_bytes is null || _busy">Voorbeeld</MudButton>
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="DoConfirm"
+                       Disabled="_preview is null || _preview.ValidCount == 0 || _busy">Bevestigen</MudButton>
+        </MudStack>
+    </MudPaper>
+
+    @if (_preview is not null)
+    {
+        <MudAlert Severity="@(_preview.ErrorCount > 0 ? Severity.Warning : Severity.Success)" Class="mb-3">
+            Geldig: @_preview.ValidCount · Fouten: @_preview.ErrorCount
+        </MudAlert>
+        <MudTable Items="_preview.Rows" Dense="true" Hover="true">
+            <HeaderContent>
+                <MudTh>Rij</MudTh>
+                <MudTh>Jaar</MudTh>
+                <MudTh>Week</MudTh>
+                <MudTh>Werkplek</MudTh>
+                <MudTh>Shifts</MudTh>
+                <MudTh>Uren</MudTh>
+                <MudTh>Datum</MudTh>
+                <MudTh>Fout</MudTh>
+            </HeaderContent>
+            <RowTemplate>
+                <MudTd>@context.RowNumber</MudTd>
+                <MudTd>@context.Year</MudTd>
+                <MudTd>@context.WeekNumber</MudTd>
+                <MudTd>@context.WorkplaceNumber</MudTd>
+                <MudTd>@context.RequiredShifts</MudTd>
+                <MudTd>@context.HoursPerShift</MudTd>
+                <MudTd>@(context.SpecificDate?.ToString("dd-MM-yyyy"))</MudTd>
+                <MudTd>
+                    @if (context.Error is not null)
+                    {
+                        <MudText Color="Color.Error">@context.Error</MudText>
+                    }
+                </MudTd>
+            </RowTemplate>
+        </MudTable>
+    }
+
+    <MudText Typo="Typo.h6" Class="mt-4 mb-2">Importhistorie</MudText>
+    <MudTable Items="_history" Dense="true">
+        <HeaderContent>
+            <MudTh>Datum</MudTh>
+            <MudTh>Gebruiker</MudTh>
+            <MudTh>Bestand</MudTh>
+            <MudTh>Regels</MudTh>
+            <MudTh>Fouten</MudTh>
+            <MudTh>Diff</MudTh>
+        </HeaderContent>
+        <RowTemplate>
+            <MudTd>@context.ImportedAt.ToLocalTime().ToString("g")</MudTd>
+            <MudTd>@context.ImportedBy</MudTd>
+            <MudTd>@context.SourceFileName</MudTd>
+            <MudTd>@context.ProcessedRows</MudTd>
+            <MudTd>@context.ErrorCount</MudTd>
+            <MudTd>@context.DiffSummary</MudTd>
+        </RowTemplate>
+    </MudTable>
+}
+
+@code {
+    private byte[]? _bytes;
+    private string? _fileName;
+    private ImportPreviewResult? _preview;
+    private List<ImportBatch> _history = [];
+    private bool _busy;
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (!Session.IsAuthenticated) { Nav.NavigateTo("/login"); return; }
+        _history = (await Import.GetHistoryAsync()).ToList();
+    }
+
+    private async Task OnFile(InputFileChangeEventArgs e)
+    {
+        var file = e.File;
+        _fileName = file.Name;
+        await using var stream = file.OpenReadStream(10 * 1024 * 1024);
+        using var ms = new MemoryStream();
+        await stream.CopyToAsync(ms);
+        _bytes = ms.ToArray();
+        _preview = null;
+    }
+
+    private async Task DoPreview()
+    {
+        if (_bytes is null || _fileName is null) return;
+        _busy = true;
+        try
+        {
+            await using var ms = new MemoryStream(_bytes);
+            _preview = await Import.PreviewAsync(ms, _fileName);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add(ex.Message, Severity.Error);
+        }
+        finally { _busy = false; }
+    }
+
+    private async Task DoConfirm()
+    {
+        if (_preview is null || _fileName is null) return;
+        _busy = true;
+        try
+        {
+            var result = await Import.ConfirmAsync(_preview, _fileName, Session.UserNameOrSystem);
+            Snackbar.Add($"Import #{result.BatchId} bevestigd. {result.DiffSummary}", Severity.Success);
+            _history = (await Import.GetHistoryAsync()).ToList();
+            _preview = null;
+            _bytes = null;
+            _fileName = null;
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add(ex.Message, Severity.Error);
+        }
+        finally { _busy = false; }
+    }
+}

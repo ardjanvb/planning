@@ -1,0 +1,79 @@
+@implements IDisposable
+@inject SessionState Session
+
+<div class="top-row ps-3 navbar navbar-dark">
+    <div class="container-fluid">
+        <a class="navbar-brand" href="">Personeelsplanning</a>
+    </div>
+</div>
+
+<input type="checkbox" title="Navigation menu" class="navbar-toggler" />
+
+<div class="nav-scrollable" onclick="document.querySelector('.navbar-toggler').click()">
+    <nav class="nav flex-column">
+        <div class="nav-section-label px-3">Planning</div>
+        <div class="nav-item px-3">
+            <NavLink class="nav-link" href="" Match="NavLinkMatch.All">
+                <span class="bi bi-house-door-fill-nav-menu" aria-hidden="true"></span> Planningsmatrix
+            </NavLink>
+        </div>
+        <div class="nav-item px-3">
+            <NavLink class="nav-link" href="capaciteit">
+                <span class="bi bi-list-nested-nav-menu" aria-hidden="true"></span> Capaciteit
+            </NavLink>
+        </div>
+        @if (Session.CanImport)
+        {
+            <div class="nav-item px-3">
+                <NavLink class="nav-link" href="import">
+                    <span class="bi bi-plus-square-fill-nav-menu" aria-hidden="true"></span> Import
+                </NavLink>
+            </div>
+        }
+        @if (Session.CanExport)
+        {
+            <div class="nav-item px-3">
+                <NavLink class="nav-link" href="export">
+                    <span class="bi bi-list-nested-nav-menu" aria-hidden="true"></span> Export
+                </NavLink>
+            </div>
+        }
+        <div class="nav-item px-3">
+            <NavLink class="nav-link" href="versies">
+                <span class="bi bi-list-nested-nav-menu" aria-hidden="true"></span> Versies
+            </NavLink>
+        </div>
+
+        @if (Session.CanManageMasterData)
+        {
+            <div class="nav-section-label px-3 mt-2">Beheer</div>
+            <div class="nav-item px-3">
+                <NavLink class="nav-link" href="beheer/medewerkers">Medewerkers</NavLink>
+            </div>
+            <div class="nav-item px-3">
+                <NavLink class="nav-link" href="beheer/werkplekken">Werkplekken</NavLink>
+            </div>
+            <div class="nav-item px-3">
+                <NavLink class="nav-link" href="beheer/ploegen">Ploegen &amp; patronen</NavLink>
+            </div>
+            <div class="nav-item px-3">
+                <NavLink class="nav-link" href="beheer/kwalificaties">Functies &amp; kwalificaties</NavLink>
+            </div>
+            <div class="nav-item px-3">
+                <NavLink class="nav-link" href="beheer/kalender">Kalender</NavLink>
+            </div>
+            <div class="nav-item px-3">
+                <NavLink class="nav-link" href="beheer/afwezigheid">Afwezigheid</NavLink>
+            </div>
+            <div class="nav-item px-3">
+                <NavLink class="nav-link" href="beheer/audit">Wijzigingshistorie</NavLink>
+            </div>
+        }
+    </nav>
+</div>
+
+@code {
+    protected override void OnInitialized() => Session.Changed += OnChanged;
+    private void OnChanged() => InvokeAsync(StateHasChanged);
+    public void Dispose() => Session.Changed -= OnChanged;
+}

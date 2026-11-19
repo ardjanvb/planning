@@ -1,0 +1,70 @@
+@inherits LayoutComponentBase
+@implements IDisposable
+@inject SessionState Session
+@inject NavigationManager Nav
+
+<MudThemeProvider />
+<MudPopoverProvider />
+<MudDialogProvider />
+<MudSnackbarProvider />
+
+@if (!Session.IsAuthenticated && !IsLoginPage)
+{
+    <div class="content px-4 py-4">
+        <MudAlert Severity="Severity.Info">U bent niet ingelogd. <MudLink Href="/login">Ga naar inloggen</MudLink>.</MudAlert>
+    </div>
+}
+else if (IsLoginPage)
+{
+    @Body
+}
+else
+{
+    <div class="page">
+        <div class="sidebar">
+            <NavMenu />
+        </div>
+
+        <main>
+            <div class="top-row px-4 d-flex align-items-center justify-content-end gap-3">
+                <span class="text-muted small">@Session.DisplayName (@AppRoles.DisplayName(Session.Role))</span>
+                <MudButton Variant="Variant.Text" Size="Size.Small" OnClick="Logout">Uitloggen</MudButton>
+            </div>
+
+            <article class="content px-4">
+                @Body
+            </article>
+        </main>
+    </div>
+}
+
+<div id="blazor-error-ui" data-nosnippet>
+    Er is een onverwachte fout opgetreden.
+    <a href="." class="reload">Herladen</a>
+    <span class="dismiss">🗙</span>
+</div>
+
+@code {
+    private bool IsLoginPage => Nav.ToBaseRelativePath(Nav.Uri).StartsWith("login", StringComparison.OrdinalIgnoreCase);
+
+    protected override void OnInitialized()
+    {
+        Session.Changed += OnChanged;
+        Nav.LocationChanged += OnLocationChanged;
+    }
+
+    private void OnChanged() => InvokeAsync(StateHasChanged);
+    private void OnLocationChanged(object? sender, LocationChangedEventArgs e) => InvokeAsync(StateHasChanged);
+
+    private void Logout()
+    {
+        Session.Logout();
+        Nav.NavigateTo("/login");
+    }
+
+    public void Dispose()
+    {
+        Session.Changed -= OnChanged;
+        Nav.LocationChanged -= OnLocationChanged;
+    }
+}

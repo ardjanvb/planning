@@ -1,0 +1,196 @@
+@using Domain
+@using MudBlazor
+@using Services.Logic
+
+<MudDialog>
+    <TitleContent>@(Mode == AssignMode.FromWorkplace ? "Medewerker toewijzen" : "Werkplek toewijzen")</TitleContent>
+    <DialogContent>
+        @if (_blocked)
+        {
+            <MudAlert Severity="Severity.Error" Class="mb-3">@_blockReason</MudAlert>
+        }
+        else
+        {
+            @if (Mode == AssignMode.FromWorkplace)
+            {
+                <MudSelect T="int" Value="_model.EmployeeId" ValueChanged="OnEmployeeChanged" Label="Medewerker"
+                           Variant="Variant.Outlined" Class="mb-3">
+                    @foreach (var e in Employees)
+                    {
+                        <MudSelectItem Value="@e.Id">@e.DisplayName</MudSelectItem>
+                    }
+                </MudSelect>
+                <MudText Typo="Typo.caption" Class="mud-text-secondary mb-2">Werkplek: @WorkplaceLabel · @Date.ToString("ddd dd-MM")</MudText>
+            }
+            else
+            {
+                <MudText Typo="Typo.subtitle2" Class="mb-2">@EmployeeLabel · @Date.ToString("ddd dd-MM")</MudText>
+                <MudSelect T="int" @bind-Value="_model.WorkplaceId" Label="Werkplek" Variant="Variant.Outlined" Class="mb-3">
+                    @foreach (var w in Workplaces)
+                    {
+                        <MudSelectItem Value="@w.Id">@w.ExternalNumber — @w.Name</MudSelectItem>
+                    }
+                </MudSelect>
+            }
+
+            @if (!string.IsNullOrEmpty(_patternHint))
+            {
+                <MudAlert Severity="@_hintSeverity" Dense="true" Class="mb-3">@_patternHint</MudAlert>
+            }
+
+            <MudSelect T="string" @bind-Value="_model.ShiftName" Label="Shift" Variant="Variant.Outlined" Class="mb-3"
+                       Disabled="_openShifts.Count == 0">
+                @foreach (var shift in _openShifts)
+                {
+                    <MudSelectItem Value="@shift">@shift</MudSelectItem>
+                }
+            </MudSelect>
+            <MudStack Row="true">
+                <MudTimePicker @bind-Time="_start" Label="Begin" AmPm="false" Editable="true" />
+                <MudTimePicker @bind-Time="_end" Label="Einde" AmPm="false" Editable="true" />
+            </MudStack>
+            <MudNumericField T="decimal" @bind-Value="_model.Hours" Label="Uren" Variant="Variant.Outlined" Class="mt-3" />
+        }
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="Cancel">Annuleren</MudButton>
+        @if (!_blocked)
+        {
+            <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="Submit" Disabled="_openShifts.Count == 0">
+                Toewijzen
+            </MudButton>
+        }
+    </DialogActions>
+</MudDialog>
+
+@code {
+    public enum AssignMode
+    {
+        FromWorkplace,
+        FromEmployee
+    }
+
+    public class AssignModel
+    {
+        public int EmployeeId { get; set; }
+        public int WorkplaceId { get; set; }
+        public string ShiftName { get; set; } = "Ochtend";
+        public TimeOnly StartTime { get; set; } = new(6, 0);
+        public TimeOnly EndTime { get; set; } = new(14, 0);
+        public decimal Hours { get; set; } = 8;
+        public string? OverrideReason { get; set; }
+    }
+
+    [CascadingParameter] private IMudDialogInstance MudDialog { get; set; } = default!;
+    [Parameter] public AssignMode Mode { get; set; } = AssignMode.FromWorkplace;
+    [Parameter] public List<Employee> Employees { get; set; } = [];
+    [Parameter] public List<Workplace> Workplaces { get; set; } = [];
+    [Parameter] public int WorkplaceId { get; set; }
+    [Parameter] public int EmployeeId { get; set; }
+    [Parameter] public DateOnly Date { get; set; }
+    [Parameter] public List<string> ClosedShifts { get; set; } = [];
+
+    private AssignModel _model = new();
+    private TimeSpan? _start = new TimeSpan(6, 0, 0);
+    private TimeSpan? _end = new TimeSpan(14, 0, 0);
+    private string _patternHint = "";
+    private Severity _hintSeverity = Severity.Info;
+    private List<string> _openShifts = [];
+    private bool _blocked;
+    private string _blockReason = "";
+
+    private string WorkplaceLabel =>
+        Workplaces.FirstOrDefault(w => w.Id == WorkplaceId)?.Name
+        ?? Workplaces.FirstOrDefault(w => w.Id == _model.WorkplaceId)?.Name
+        ?? $"#{WorkplaceId}";
+
+    private string EmployeeLabel =>
+        Employees.FirstOrDefault(e => e.Id == EmployeeId)?.DisplayName
+        ?? Employees.FirstOrDefault(e => e.Id == _model.EmployeeId)?.DisplayName
+        ?? $"#{EmployeeId}";
+
+    protected override void OnInitialized()
+    {
+        _openShifts = PlanningConstants.StandardShifts
+            .Where(s => !ClosedShifts.Any(c => string.Equals(c, s, StringComparison.OrdinalIgnoreCase)))
+            .ToList();
+
+        if (_openShifts.Count == 0)
+        {
+            _blocked = true;
+            _blockReason = "Alle shifts zijn gesloten op deze dag. Plannen is niet mogelijk.";
+            return;
+        }
+
+        if (Employees.Count == 0 && Mode == AssignMode.FromWorkplace)
+        {
+            _blocked = true;
+            _blockReason = "Geen beschikbare medewerkers (mogelijk allemaal met verlof).";
+            return;
+        }
+
+        _model.WorkplaceId = WorkplaceId != 0 ? WorkplaceId : Workplaces.FirstOrDefault()?.Id ?? 0;
+        _model.EmployeeId = EmployeeId != 0 ? EmployeeId : Employees.FirstOrDefault()?.Id ?? 0;
+        ApplyPatternForEmployee(_model.EmployeeId);
+    }
+
+    private Task OnEmployeeChanged(int employeeId)
+    {
+        _model.EmployeeId = employeeId;
+        ApplyPatternForEmployee(employeeId);
+        return Task.CompletedTask;
+    }
+
+    private void ApplyPatternForEmployee(int employeeId)
+    {
+        var employee = Employees.FirstOrDefault(e => e.Id == employeeId);
+        var shift = ShiftPatternHelper.ResolveForEmployee(employee, Date);
+        _model.StartTime = shift.StartTime;
+        _model.EndTime = shift.EndTime;
+        _model.Hours = shift.IsFree ? 8 : shift.NetHours;
+        _start = shift.StartTime.ToTimeSpan();
+        _end = shift.EndTime.ToTimeSpan();
+
+        var preferred = shift.IsFree ? null : shift.ShiftName;
+        if (preferred is not null &&
+            _openShifts.Any(s => string.Equals(s, preferred, StringComparison.OrdinalIgnoreCase)))
+        {
+            _model.ShiftName = _openShifts.First(s => string.Equals(s, preferred, StringComparison.OrdinalIgnoreCase));
+            _hintSeverity = Severity.Info;
+            _patternHint = employee?.PrimaryCrew?.CrewPattern is not null
+                ? $"Weekpatroon: {_model.ShiftName}"
+                : $"Shift: {_model.ShiftName}";
+        }
+        else if (preferred is not null)
+        {
+            _model.ShiftName = _openShifts[0];
+            _hintSeverity = Severity.Warning;
+            _patternHint = $"Patroonshift '{preferred}' is gesloten. Kies een open shift.";
+        }
+        else
+        {
+            _model.ShiftName = _openShifts[0];
+            _hintSeverity = Severity.Info;
+            _patternHint = "Volgens ploegpatroon is deze dag vrij.";
+        }
+    }
+
+    private void Cancel() => MudDialog.Cancel();
+
+    private void Submit()
+    {
+        if (_blocked || _openShifts.Count == 0) return;
+        if (Mode == AssignMode.FromWorkplace && _model.EmployeeId <= 0) return;
+        if (Mode == AssignMode.FromEmployee && _model.WorkplaceId <= 0) return;
+        if (ClosedShifts.Any(c => string.Equals(c, _model.ShiftName, StringComparison.OrdinalIgnoreCase)))
+            return;
+
+        _model.StartTime = TimeOnly.FromTimeSpan(_start ?? TimeSpan.FromHours(6));
+        _model.EndTime = TimeOnly.FromTimeSpan(_end ?? TimeSpan.FromHours(14));
+        if (Mode == AssignMode.FromWorkplace)
+            _model.WorkplaceId = WorkplaceId;
+        if (Mode == AssignMode.FromEmployee)
+            _model.EmployeeId = EmployeeId;
+        MudDialog.Close(DialogResult.Ok(_model));
+    }
+}

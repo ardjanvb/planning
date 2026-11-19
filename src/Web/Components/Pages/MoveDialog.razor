@@ -1,0 +1,48 @@
+@using MudBlazor
+
+<MudDialog>
+    <TitleContent>Toewijzing verplaatsen</TitleContent>
+    <DialogContent>
+        <MudText Class="mb-3">@Assignment.EmployeeName — @Assignment.WorkplaceName (@Assignment.Date.ToString("dd-MM")) · @Assignment.ShiftName</MudText>
+        <MudSelect T="int" @bind-Value="_model.WorkplaceId" Label="Nieuwe werkplek" Variant="Variant.Outlined" Class="mb-3">
+            @foreach (var w in Workplaces)
+            {
+                <MudSelectItem Value="@w.Id">@w.ExternalNumber — @w.Name</MudSelectItem>
+            }
+        </MudSelect>
+        <MudSelect T="DateOnly" @bind-Value="_model.Date" Label="Nieuwe dag" Variant="Variant.Outlined">
+            @foreach (var d in Days)
+            {
+                <MudSelectItem Value="@d">@WeekHelper.DayLabel(d) @d.ToString("dd-MM")</MudSelectItem>
+            }
+        </MudSelect>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="Cancel">Annuleren</MudButton>
+        <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="Submit">Verplaatsen</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter] private IMudDialogInstance MudDialog { get; set; } = default!;
+    [Parameter] public ShiftAssignmentDto Assignment { get; set; } = default!;
+    [Parameter] public List<Workplace> Workplaces { get; set; } = [];
+    [Parameter] public IReadOnlyList<DateOnly> Days { get; set; } = [];
+
+    public class MoveModel
+    {
+        public int WorkplaceId { get; set; }
+        public DateOnly Date { get; set; }
+    }
+
+    private MoveModel _model = new();
+
+    protected override void OnInitialized()
+    {
+        _model.WorkplaceId = Assignment.WorkplaceId;
+        _model.Date = Assignment.Date;
+    }
+
+    private void Cancel() => MudDialog.Cancel();
+    private void Submit() => MudDialog.Close(DialogResult.Ok(_model));
+}

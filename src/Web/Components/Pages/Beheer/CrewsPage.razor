@@ -1,0 +1,219 @@
+@page "/beheer/ploegen"
+@inject SessionState Session
+@inject NavigationManager Nav
+@inject IMasterDataService Master
+@inject ISnackbar Snackbar
+
+@if (!Session.CanManageMasterData)
+{
+    <MudAlert Severity="Severity.Warning">Geen toegang.</MudAlert>
+}
+else
+{
+    <MudText Typo="Typo.h4" Class="mb-3">Ploegen &amp; ploegpatronen</MudText>
+
+    <MudGrid>
+        <MudItem xs="12" md="6">
+            <MudPaper Class="pa-3" Elevation="1">
+                <MudStack Row="true" Justify="Justify.SpaceBetween" Class="mb-2">
+                    <MudText Typo="Typo.h6">Ploegen</MudText>
+                    <MudButton Size="Size.Small" Variant="Variant.Filled" Color="Color.Primary" OnClick="NewCrew">Nieuw</MudButton>
+                </MudStack>
+                <MudTable Items="_crews" Dense="true">
+                    <HeaderContent>
+                        <MudTh>Naam</MudTh>
+                        <MudTh>Patroon</MudTh>
+                        <MudTh>Actief</MudTh>
+                        <MudTh></MudTh>
+                    </HeaderContent>
+                    <RowTemplate>
+                        <MudTd>@context.Name</MudTd>
+                        <MudTd>@context.CrewPattern?.Name</MudTd>
+                        <MudTd>@(context.Active ? "Ja" : "Nee")</MudTd>
+                        <MudTd><MudIconButton Icon="@Icons.Material.Filled.Edit" Size="Size.Small" OnClick="@(() => EditCrew(context))" /></MudTd>
+                    </RowTemplate>
+                </MudTable>
+            </MudPaper>
+        </MudItem>
+        <MudItem xs="12" md="6">
+            <MudPaper Class="pa-3" Elevation="1">
+                <MudStack Row="true" Justify="Justify.SpaceBetween" Class="mb-2">
+                    <MudText Typo="Typo.h6">Patronen</MudText>
+                    <MudButton Size="Size.Small" Variant="Variant.Filled" Color="Color.Primary" OnClick="NewPattern">Nieuw</MudButton>
+                </MudStack>
+                <MudTable Items="_patterns" Dense="true">
+                    <HeaderContent>
+                        <MudTh>Naam</MudTh>
+                        <MudTh>Cyclus</MudTh>
+                        <MudTh>Dagen</MudTh>
+                        <MudTh></MudTh>
+                    </HeaderContent>
+                    <RowTemplate>
+                        <MudTd>@context.Name</MudTd>
+                        <MudTd>@context.CycleWeeks wkn</MudTd>
+                        <MudTd>@context.Days.Count</MudTd>
+                        <MudTd><MudIconButton Icon="@Icons.Material.Filled.Edit" Size="Size.Small" OnClick="@(() => EditPattern(context))" /></MudTd>
+                    </RowTemplate>
+                </MudTable>
+            </MudPaper>
+        </MudItem>
+    </MudGrid>
+
+    <MudDialog @bind-Visible="_crewDialog">
+        <TitleContent>Ploeg</TitleContent>
+        <DialogContent>
+            <MudTextField @bind-Value="_crew.Name" Label="Naam" Variant="Variant.Outlined" Class="mb-2" />
+            <MudTextField @bind-Value="_crew.Description" Label="Omschrijving" Variant="Variant.Outlined" Class="mb-2" />
+            <MudSelect T="int?" @bind-Value="_crew.CrewPatternId" Label="Ploegpatroon" Variant="Variant.Outlined" Clearable="true">
+                @foreach (var p in _patterns)
+                {
+                    <MudSelectItem T="int?" Value="@((int?)p.Id)">@p.Name</MudSelectItem>
+                }
+            </MudSelect>
+            <MudSwitch @bind-Value="_crew.Active" Label="Actief" Color="Color.Primary" Class="mt-2" />
+        </DialogContent>
+        <DialogActions>
+            <MudButton OnClick="@(() => _crewDialog = false)">Annuleren</MudButton>
+            <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="SaveCrew">Opslaan</MudButton>
+        </DialogActions>
+    </MudDialog>
+
+    <MudDialog @bind-Visible="_patternDialog" Options="new DialogOptions { MaxWidth = MaxWidth.Medium, FullWidth = true }">
+        <TitleContent>Ploegpatroon</TitleContent>
+        <DialogContent>
+            <MudTextField @bind-Value="_pattern.Name" Label="Naam" Variant="Variant.Outlined" Class="mb-2" />
+            <MudNumericField T="int" @bind-Value="_pattern.CycleWeeks" Label="Aantal weken in cyclus" Variant="Variant.Outlined" Class="mb-2" />
+            <MudSwitch @bind-Value="_pattern.Active" Label="Actief" Color="Color.Primary" />
+            <MudText Typo="Typo.subtitle2" Class="mt-3 mb-2">Week 1 (ma-zo)</MudText>
+            @foreach (DayOfWeek day in Enum.GetValues<DayOfWeek>())
+            {
+                var pd = _patternDays.FirstOrDefault(d => d.DayOfWeek == day) ?? new PatternDay { DayOfWeek = day, ShiftName = "Vrij" };
+                <MudStack Row="true" Class="mb-1" AlignItems="AlignItems.Center">
+                    <MudText Style="width:90px">@day</MudText>
+                    <MudTextField T="string" Value="@pd.ShiftName" ValueChanged="@((string v) => SetShift(day, v))" Label="Shift" Variant="Variant.Outlined" Margin="Margin.Dense" Style="width:120px" />
+                    <MudNumericField T="decimal" Value="@pd.NetHours" ValueChanged="@((decimal v) => SetHours(day, v))" Label="Uren" Variant="Variant.Outlined" Margin="Margin.Dense" Style="width:100px" />
+                </MudStack>
+            }
+        </DialogContent>
+        <DialogActions>
+            <MudButton OnClick="@(() => _patternDialog = false)">Annuleren</MudButton>
+            <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="SavePattern">Opslaan</MudButton>
+        </DialogActions>
+    </MudDialog>
+}
+
+@code {
+    private List<Crew> _crews = [];
+    private List<CrewPattern> _patterns = [];
+    private Crew _crew = new();
+    private CrewPattern _pattern = new();
+    private List<PatternDay> _patternDays = [];
+    private bool _crewDialog;
+    private bool _patternDialog;
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (!Session.IsAuthenticated) { Nav.NavigateTo("/login"); return; }
+        await Load();
+    }
+
+    private async Task Load()
+    {
+        _crews = await Master.GetCrewsAsync();
+        _patterns = await Master.GetCrewPatternsAsync();
+    }
+
+    private void NewCrew()
+    {
+        _crew = new Crew { Active = true };
+        _crewDialog = true;
+    }
+
+    private void EditCrew(Crew c)
+    {
+        _crew = new Crew
+        {
+            Id = c.Id,
+            Name = c.Name,
+            Description = c.Description,
+            CrewPatternId = c.CrewPatternId,
+            Active = c.Active,
+            EffectiveFrom = c.EffectiveFrom,
+            EffectiveTo = c.EffectiveTo
+        };
+        _crewDialog = true;
+    }
+
+    private async Task SaveCrew()
+    {
+        await Master.SaveCrewAsync(_crew);
+        _crewDialog = false;
+        Snackbar.Add("Ploeg opgeslagen", Severity.Success);
+        await Load();
+    }
+
+    private void NewPattern()
+    {
+        _pattern = new CrewPattern { Active = true, CycleWeeks = 1 };
+        _patternDays = Enum.GetValues<DayOfWeek>().Select(d => new PatternDay
+        {
+            DayOfWeek = d,
+            WeekIndex = 0,
+            ShiftName = d is DayOfWeek.Saturday or DayOfWeek.Sunday ? "Vrij" : "Ochtend",
+            StartTime = d is DayOfWeek.Saturday or DayOfWeek.Sunday ? null : new TimeOnly(6, 0),
+            EndTime = d is DayOfWeek.Saturday or DayOfWeek.Sunday ? null : new TimeOnly(14, 0),
+            NetHours = d is DayOfWeek.Saturday or DayOfWeek.Sunday ? 0 : 8
+        }).ToList();
+        _patternDialog = true;
+    }
+
+    private void EditPattern(CrewPattern p)
+    {
+        _pattern = new CrewPattern
+        {
+            Id = p.Id,
+            Name = p.Name,
+            CycleWeeks = p.CycleWeeks,
+            Active = p.Active,
+            EffectiveFrom = p.EffectiveFrom,
+            EffectiveTo = p.EffectiveTo
+        };
+        _patternDays = p.Days.Select(d => new PatternDay
+        {
+            DayOfWeek = d.DayOfWeek,
+            WeekIndex = d.WeekIndex,
+            ShiftName = d.ShiftName,
+            StartTime = d.StartTime,
+            EndTime = d.EndTime,
+            PauseMinutes = d.PauseMinutes,
+            NetHours = d.NetHours
+        }).ToList();
+        foreach (DayOfWeek day in Enum.GetValues<DayOfWeek>())
+        {
+            if (_patternDays.All(x => x.DayOfWeek != day))
+                _patternDays.Add(new PatternDay { DayOfWeek = day, ShiftName = "Vrij" });
+        }
+        _patternDialog = true;
+    }
+
+    private void SetShift(DayOfWeek day, string value)
+    {
+        var pd = _patternDays.First(d => d.DayOfWeek == day);
+        pd.ShiftName = value;
+    }
+
+    private void SetHours(DayOfWeek day, decimal value)
+    {
+        var pd = _patternDays.First(d => d.DayOfWeek == day);
+        pd.NetHours = value;
+    }
+
+    private async Task SavePattern()
+    {
+        var saved = await Master.SaveCrewPatternAsync(_pattern);
+        await Master.SavePatternDaysAsync(saved.Id, _patternDays);
+        _patternDialog = false;
+        Snackbar.Add("Patroon opgeslagen", Severity.Success);
+        await Load();
+    }
+}

@@ -1,0 +1,124 @@
+@page "/beheer/kwalificaties"
+@inject SessionState Session
+@inject NavigationManager Nav
+@inject IMasterDataService Master
+@inject ISnackbar Snackbar
+
+@if (!Session.CanManageMasterData)
+{
+    <MudAlert Severity="Severity.Warning">Geen toegang.</MudAlert>
+}
+else
+{
+    <MudGrid>
+        <MudItem xs="12" md="6">
+            <MudPaper Class="pa-3" Elevation="1">
+                <MudStack Row="true" Justify="Justify.SpaceBetween" Class="mb-2">
+                    <MudText Typo="Typo.h6">Functies</MudText>
+                    <MudButton Size="Size.Small" Variant="Variant.Filled" OnClick="NewFunction">Nieuw</MudButton>
+                </MudStack>
+                <MudTable Items="_functions" Dense="true">
+                    <HeaderContent><MudTh>Naam</MudTh><MudTh>Actief</MudTh><MudTh></MudTh></HeaderContent>
+                    <RowTemplate>
+                        <MudTd>@context.Name</MudTd>
+                        <MudTd>@(context.Active ? "Ja" : "Nee")</MudTd>
+                        <MudTd><MudIconButton Icon="@Icons.Material.Filled.Edit" Size="Size.Small" OnClick="@(() => EditFunction(context))" /></MudTd>
+                    </RowTemplate>
+                </MudTable>
+            </MudPaper>
+        </MudItem>
+        <MudItem xs="12" md="6">
+            <MudPaper Class="pa-3" Elevation="1">
+                <MudStack Row="true" Justify="Justify.SpaceBetween" Class="mb-2">
+                    <MudText Typo="Typo.h6">Kwalificaties</MudText>
+                    <MudButton Size="Size.Small" Variant="Variant.Filled" OnClick="NewQual">Nieuw</MudButton>
+                </MudStack>
+                <MudTable Items="_quals" Dense="true">
+                    <HeaderContent><MudTh>Naam</MudTh><MudTh>Categorie</MudTh><MudTh></MudTh></HeaderContent>
+                    <RowTemplate>
+                        <MudTd>@context.Name</MudTd>
+                        <MudTd>@context.Category</MudTd>
+                        <MudTd><MudIconButton Icon="@Icons.Material.Filled.Edit" Size="Size.Small" OnClick="@(() => EditQual(context))" /></MudTd>
+                    </RowTemplate>
+                </MudTable>
+            </MudPaper>
+        </MudItem>
+    </MudGrid>
+
+    <MudText Typo="Typo.h6" Class="mt-4 mb-2">Kwalificatiematrix</MudText>
+    <MudTable Items="_employees" Dense="true" Hover="true" Breakpoint="Breakpoint.None">
+        <HeaderContent>
+            <MudTh>Medewerker</MudTh>
+            @foreach (var q in _quals.Where(q => q.Active))
+            {
+                <MudTh>@q.Name</MudTh>
+            }
+            <MudTh>BHV</MudTh>
+        </HeaderContent>
+        <RowTemplate>
+            <MudTd>@context.DisplayName</MudTd>
+            @foreach (var q in _quals.Where(q => q.Active))
+            {
+                var has = context.Qualifications.Any(eq => eq.QualificationId == q.Id);
+                <MudTd>@(has ? "Ja" : "Nee")</MudTd>
+            }
+            <MudTd>@(context.IsBhv ? "Ja" : "Nee")</MudTd>
+        </RowTemplate>
+    </MudTable>
+
+    <MudDialog @bind-Visible="_fnDialog">
+        <TitleContent>Functie</TitleContent>
+        <DialogContent>
+            <MudTextField @bind-Value="_fn.Name" Label="Naam" Variant="Variant.Outlined" />
+            <MudSwitch @bind-Value="_fn.Active" Label="Actief" Color="Color.Primary" Class="mt-2" />
+        </DialogContent>
+        <DialogActions>
+            <MudButton OnClick="@(() => _fnDialog = false)">Annuleren</MudButton>
+            <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="SaveFn">Opslaan</MudButton>
+        </DialogActions>
+    </MudDialog>
+
+    <MudDialog @bind-Visible="_qDialog">
+        <TitleContent>Kwalificatie</TitleContent>
+        <DialogContent>
+            <MudTextField @bind-Value="_q.Name" Label="Naam" Variant="Variant.Outlined" Class="mb-2" />
+            <MudTextField @bind-Value="_q.Category" Label="Categorie" Variant="Variant.Outlined" />
+            <MudSwitch @bind-Value="_q.Active" Label="Actief" Color="Color.Primary" Class="mt-2" />
+        </DialogContent>
+        <DialogActions>
+            <MudButton OnClick="@(() => _qDialog = false)">Annuleren</MudButton>
+            <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="SaveQ">Opslaan</MudButton>
+        </DialogActions>
+    </MudDialog>
+}
+
+@code {
+    private List<JobFunction> _functions = [];
+    private List<Qualification> _quals = [];
+    private List<Employee> _employees = [];
+    private JobFunction _fn = new();
+    private Qualification _q = new();
+    private bool _fnDialog;
+    private bool _qDialog;
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (!Session.IsAuthenticated) { Nav.NavigateTo("/login"); return; }
+        await Load();
+    }
+
+    private async Task Load()
+    {
+        _functions = await Master.GetJobFunctionsAsync();
+        _quals = await Master.GetQualificationsAsync();
+        _employees = await Master.GetEmployeesAsync();
+    }
+
+    private void NewFunction() { _fn = new JobFunction { Active = true }; _fnDialog = true; }
+    private void EditFunction(JobFunction f) { _fn = new JobFunction { Id = f.Id, Name = f.Name, Description = f.Description, Active = f.Active }; _fnDialog = true; }
+    private async Task SaveFn() { await Master.SaveJobFunctionAsync(_fn); _fnDialog = false; await Load(); }
+
+    private void NewQual() { _q = new Qualification { Active = true, Category = "Algemeen" }; _qDialog = true; }
+    private void EditQual(Qualification q) { _q = new Qualification { Id = q.Id, Name = q.Name, Category = q.Category, Active = q.Active }; _qDialog = true; }
+    private async Task SaveQ() { await Master.SaveQualificationAsync(_q); _qDialog = false; await Load(); }
+}

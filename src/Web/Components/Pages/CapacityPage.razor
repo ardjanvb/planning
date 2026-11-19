@@ -1,0 +1,109 @@
+@page "/capaciteit"
+@inject SessionState Session
+@inject NavigationManager Nav
+@inject IPlanningService Planning
+
+@if (!Session.IsAuthenticated)
+{
+    <MudAlert Severity="Severity.Warning">Niet ingelogd.</MudAlert>
+}
+else
+{
+    <MudStack Row="true" Justify="Justify.SpaceBetween" Class="mb-3">
+        <MudText Typo="Typo.h4">Capaciteit</MudText>
+        <MudStack Row="true">
+            <MudNumericField T="int" @bind-Value="_year" Label="Jaar" Variant="Variant.Outlined" Margin="Margin.Dense" Style="width:110px" />
+            <MudNumericField T="int" @bind-Value="_week" Label="Week" Variant="Variant.Outlined" Margin="Margin.Dense" Style="width:90px" />
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="Load">Laden</MudButton>
+        </MudStack>
+    </MudStack>
+
+    @if (_overview is not null)
+    {
+        <MudTable Items="_overview.Capacity" Dense="true" Hover="true">
+            <HeaderContent>
+                <MudTh></MudTh>
+                <MudTh>Werkplek</MudTh>
+                <MudTh>Benodigd shifts</MudTh>
+                <MudTh>Benodigd uren</MudTh>
+                <MudTh>Gepland shifts</MudTh>
+                <MudTh>Gepland uren</MudTh>
+                <MudTh>Verschil</MudTh>
+                <MudTh>Medewerkers</MudTh>
+            </HeaderContent>
+            <RowTemplate>
+                <MudTd>
+                    <MudIconButton Icon="@(_expanded == context.WorkplaceId ? Icons.Material.Filled.ExpandLess : Icons.Material.Filled.ExpandMore)"
+                                   OnClick="@(() => Toggle(context.WorkplaceId))" Size="Size.Small" />
+                </MudTd>
+                <MudTd>@context.ExternalNumber — @context.WorkplaceName</MudTd>
+                <MudTd>@context.RequiredShifts</MudTd>
+                <MudTd>@context.RequiredHours.ToString("0.##")</MudTd>
+                <MudTd>@context.PlannedShifts</MudTd>
+                <MudTd>@context.PlannedHours.ToString("0.##")</MudTd>
+                <MudTd>
+                    <MudText Color="@(context.DifferenceHours < 0 ? Color.Error : context.DifferenceHours > 0 ? Color.Warning : Color.Success)">
+                        @context.DifferenceHours.ToString("+0.##;-0.##;0")
+                    </MudText>
+                </MudTd>
+                <MudTd>@context.AssignedEmployees</MudTd>
+            </RowTemplate>
+            <ChildRowContent>
+                @if (_expanded == context.WorkplaceId)
+                {
+                    <MudTr>
+                        <MudTd colspan="8">
+                            @{
+                                var wp = _overview.ByWorkplace.First(w => w.WorkplaceId == context.WorkplaceId);
+                            }
+                            <MudList T="string" Dense="true">
+                                @foreach (var day in _overview.Days)
+                                {
+                                    var cell = wp.Days[day];
+                                    <MudListItem>
+                                        <strong>@WeekHelper.DayLabel(day) @day.ToString("dd-MM")</strong>:
+                                        @if (cell.Assignments.Count == 0)
+                                        {
+                                            <span class="text-muted">geen bezetting</span>
+                                        }
+                                        else
+                                        {
+                                            @string.Join(", ", cell.Assignments.Select(a => $"{a.EmployeeName} ({a.PlannedHours:0.##}u)"))
+                                        }
+                                    </MudListItem>
+                                }
+                            </MudList>
+                        </MudTd>
+                    </MudTr>
+                }
+            </ChildRowContent>
+        </MudTable>
+
+        <MudPaper Class="pa-3 mt-3" Elevation="1">
+            <MudText>
+                Totaal benodigd: @_overview.Capacity.Sum(c => c.RequiredHours).ToString("0.##")u ·
+                Gepland: @_overview.Capacity.Sum(c => c.PlannedHours).ToString("0.##")u ·
+                Verschil: @_overview.Capacity.Sum(c => c.DifferenceHours).ToString("+0.##;-0.##;0")u
+            </MudText>
+        </MudPaper>
+    }
+}
+
+@code {
+    private PlanningOverview? _overview;
+    private int _year;
+    private int _week;
+    private int? _expanded;
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (!Session.IsAuthenticated) { Nav.NavigateTo("/login"); return; }
+        (_year, _week) = WeekHelper.CurrentIsoWeek();
+        await Load();
+    }
+
+    private async Task Load() => _overview = await Planning.GetOverviewAsync(_year, _week);
+
+    private void Toggle(int workplaceId) =>
+        _expanded = _expanded == workplaceId ? null : workplaceId;
+}

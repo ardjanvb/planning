@@ -1,0 +1,221 @@
+@page "/beheer/kalender"
+@using Domain
+@inject SessionState Session
+@inject NavigationManager Nav
+@inject IMasterDataService Master
+@inject ISnackbar Snackbar
+
+@if (!Session.CanManageMasterData)
+{
+    <MudAlert Severity="Severity.Warning">Geen toegang.</MudAlert>
+}
+else
+{
+    <MudStack Row="true" Justify="Justify.SpaceBetween" Class="mb-3">
+        <MudText Typo="Typo.h4">Kalender</MudText>
+        <MudNumericField T="int" Value="_year" ValueChanged="OnYear" Label="Jaar" Variant="Variant.Outlined" Style="width:120px" />
+    </MudStack>
+
+    <MudPaper Class="pa-3 mb-4" Elevation="1">
+        <MudText Typo="Typo.h6" Class="mb-2">Dagtype</MudText>
+        <MudStack Row="true" AlignItems="AlignItems.End">
+            <MudDatePicker @bind-Date="_from" Label="Van" Variant="Variant.Outlined" />
+            <MudDatePicker @bind-Date="_to" Label="Tot" Variant="Variant.Outlined" />
+            <MudSelect T="CalendarDayType" @bind-Value="_type" Label="Type" Variant="Variant.Outlined" Style="min-width:200px">
+                @foreach (CalendarDayType t in Enum.GetValues<CalendarDayType>())
+                {
+                    <MudSelectItem Value="@t">@t</MudSelectItem>
+                }
+            </MudSelect>
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="ApplyRange">Toepassen</MudButton>
+        </MudStack>
+    </MudPaper>
+
+    <MudPaper Class="pa-3 mb-4" Elevation="1">
+        <MudText Typo="Typo.h6" Class="mb-2">Shifts uitzetten (bedrijf-breed)</MudText>
+        <MudText Typo="Typo.body2" Class="mud-text-secondary mb-3">
+            Uitgezette shifts kunnen niet worden ingepland in de matrix.
+        </MudText>
+        <MudStack Row="true" AlignItems="AlignItems.End" Class="mb-3">
+            <MudDatePicker Date="_closureDate" DateChanged="OnClosureDateChanged" Label="Datum" Variant="Variant.Outlined" />
+            <MudCheckBox T="bool" @bind-Value="_closeOchtend" Label="Ochtend dicht" Color="Color.Primary" />
+            <MudCheckBox T="bool" @bind-Value="_closeMiddag" Label="Middag dicht" Color="Color.Primary" />
+            <MudCheckBox T="bool" @bind-Value="_closeNacht" Label="Nacht dicht" Color="Color.Primary" />
+            <MudButton Variant="Variant.Filled" Color="Color.Warning" OnClick="SaveClosures">Opslaan</MudButton>
+        </MudStack>
+    </MudPaper>
+
+    <MudText Typo="Typo.h6" Class="mb-2">Afwijkende dagen</MudText>
+    <MudTable Items="_days.Where(d => d.Type != CalendarDayType.WorkDay).ToList()" Dense="true" Hover="true" Class="mb-4">
+        <HeaderContent>
+            <MudTh>Datum</MudTh>
+            <MudTh>Type</MudTh>
+            <MudTh>Opmerking</MudTh>
+        </HeaderContent>
+        <RowTemplate>
+            <MudTd>@context.Date.ToString("ddd dd-MM-yyyy")</MudTd>
+            <MudTd>@context.Type</MudTd>
+            <MudTd>@context.Remark</MudTd>
+        </RowTemplate>
+    </MudTable>
+
+    <MudPaper Class="pa-3 mb-4" Elevation="1">
+        <MudText Typo="Typo.h6" Class="mb-2">Werkplek-kalenderuitzonderingen</MudText>
+        <MudText Typo="Typo.body2" Class="mud-text-secondary mb-3">
+            Afwijkende dagtypes per werkplek (bijv. onderhoud of speciale productie).
+        </MudText>
+        <MudStack Row="true" AlignItems="AlignItems.End" Class="mb-3">
+            <MudSelect T="int" @bind-Value="_exceptionWorkplaceId" Label="Werkplek" Variant="Variant.Outlined" Style="min-width:240px">
+                @foreach (var w in _workplaces)
+                {
+                    <MudSelectItem Value="@w.Id">@w.ExternalNumber — @w.Name</MudSelectItem>
+                }
+            </MudSelect>
+            <MudDatePicker @bind-Date="_exceptionDate" Label="Datum" Variant="Variant.Outlined" />
+            <MudSelect T="CalendarDayType" @bind-Value="_exceptionType" Label="Type" Variant="Variant.Outlined" Style="min-width:180px">
+                @foreach (CalendarDayType t in Enum.GetValues<CalendarDayType>())
+                {
+                    <MudSelectItem Value="@t">@t</MudSelectItem>
+                }
+            </MudSelect>
+            <MudTextField @bind-Value="_exceptionRemark" Label="Opmerking" Variant="Variant.Outlined" Style="min-width:160px" />
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="SaveException">Opslaan</MudButton>
+        </MudStack>
+        <MudTable Items="_exceptions" Dense="true" Hover="true">
+            <HeaderContent>
+                <MudTh>Datum</MudTh>
+                <MudTh>Werkplek</MudTh>
+                <MudTh>Type</MudTh>
+                <MudTh>Opmerking</MudTh>
+                <MudTh></MudTh>
+            </HeaderContent>
+            <RowTemplate>
+                <MudTd>@context.Date.ToString("ddd dd-MM-yyyy")</MudTd>
+                <MudTd>@(context.Workplace?.ExternalNumber) — @(context.Workplace?.Name)</MudTd>
+                <MudTd>@context.Type</MudTd>
+                <MudTd>@context.Remark</MudTd>
+                <MudTd>
+                    <MudIconButton Icon="@Icons.Material.Filled.Delete" Size="Size.Small" Color="Color.Error"
+                                   OnClick="@(() => DeleteException(context.Id))" />
+                </MudTd>
+            </RowTemplate>
+        </MudTable>
+    </MudPaper>
+
+    <MudText Typo="Typo.h6" Class="mb-2">Gesloten shifts</MudText>
+    <MudTable Items="_closures" Dense="true" Hover="true">
+        <HeaderContent>
+            <MudTh>Datum</MudTh>
+            <MudTh>Shift</MudTh>
+            <MudTh>Opmerking</MudTh>
+        </HeaderContent>
+        <RowTemplate>
+            <MudTd>@context.Date.ToString("ddd dd-MM-yyyy")</MudTd>
+            <MudTd>@context.ShiftName</MudTd>
+            <MudTd>@context.Remark</MudTd>
+        </RowTemplate>
+    </MudTable>
+}
+
+@code {
+    private int _year = DateTime.Today.Year;
+    private List<CalendarDay> _days = [];
+    private List<ShiftClosure> _closures = [];
+    private List<Workplace> _workplaces = [];
+    private List<WorkplaceCalendarException> _exceptions = [];
+    private DateTime? _from = DateTime.Today;
+    private DateTime? _to = DateTime.Today;
+    private CalendarDayType _type = CalendarDayType.Holiday;
+    private DateTime? _closureDate = DateTime.Today;
+    private bool _closeOchtend;
+    private bool _closeMiddag;
+    private bool _closeNacht;
+    private int _exceptionWorkplaceId;
+    private DateTime? _exceptionDate = DateTime.Today;
+    private CalendarDayType _exceptionType = CalendarDayType.Closure;
+    private string? _exceptionRemark;
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (!Session.IsAuthenticated) { Nav.NavigateTo("/login"); return; }
+        _workplaces = await Master.GetWorkplacesAsync();
+        _exceptionWorkplaceId = _workplaces.FirstOrDefault()?.Id ?? 0;
+        await Load();
+        await LoadClosureSelection();
+    }
+
+    private async Task OnYear(int year)
+    {
+        _year = year;
+        await Load();
+    }
+
+    private async Task Load()
+    {
+        _days = await Master.GetCalendarDaysAsync(_year);
+        var from = new DateOnly(_year, 1, 1);
+        var to = new DateOnly(_year, 12, 31);
+        _closures = await Master.GetShiftClosuresAsync(from, to);
+        _exceptions = await Master.GetWorkplaceCalendarExceptionsAsync(year: _year);
+    }
+
+    private async Task SaveException()
+    {
+        if (_exceptionWorkplaceId <= 0 || _exceptionDate is null) return;
+        await Master.UpsertWorkplaceCalendarExceptionAsync(
+            _exceptionWorkplaceId,
+            DateOnly.FromDateTime(_exceptionDate.Value),
+            _exceptionType,
+            _exceptionRemark);
+        Snackbar.Add("Werkplek-uitzondering opgeslagen", Severity.Success);
+        await Load();
+    }
+
+    private async Task DeleteException(int id)
+    {
+        await Master.DeleteWorkplaceCalendarExceptionAsync(id);
+        Snackbar.Add("Uitzondering verwijderd", Severity.Success);
+        await Load();
+    }
+
+    private async Task ApplyRange()
+    {
+        if (_from is null || _to is null) return;
+        var start = DateOnly.FromDateTime(_from.Value);
+        var end = DateOnly.FromDateTime(_to.Value);
+        for (var d = start; d <= end; d = d.AddDays(1))
+            await Master.UpsertCalendarDayAsync(d, _type, null);
+        Snackbar.Add("Kalender bijgewerkt", Severity.Success);
+        await Load();
+    }
+
+    private async Task OnClosureDateChanged(DateTime? value)
+    {
+        _closureDate = value;
+        StateHasChanged();
+        await LoadClosureSelection();
+    }
+
+    private async Task LoadClosureSelection()
+    {
+        if (_closureDate is null) return;
+        var date = DateOnly.FromDateTime(_closureDate.Value);
+        var dayClosures = await Master.GetShiftClosuresAsync(date, date);
+        _closeOchtend = dayClosures.Any(c => c.ShiftName.Equals("Ochtend", StringComparison.OrdinalIgnoreCase));
+        _closeMiddag = dayClosures.Any(c => c.ShiftName.Equals("Middag", StringComparison.OrdinalIgnoreCase));
+        _closeNacht = dayClosures.Any(c => c.ShiftName.Equals("Nacht", StringComparison.OrdinalIgnoreCase));
+    }
+
+    private async Task SaveClosures()
+    {
+        if (_closureDate is null) return;
+        var date = DateOnly.FromDateTime(_closureDate.Value);
+        var closed = new List<string>();
+        if (_closeOchtend) closed.Add("Ochtend");
+        if (_closeMiddag) closed.Add("Middag");
+        if (_closeNacht) closed.Add("Nacht");
+        await Master.SetShiftClosuresForDateAsync(date, closed);
+        Snackbar.Add(closed.Count == 0 ? "Alle shifts weer open" : $"Gesloten: {string.Join(", ", closed)}", Severity.Success);
+        await Load();
+    }
+}

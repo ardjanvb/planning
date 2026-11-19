@@ -1,0 +1,63 @@
+@page "/export"
+@inject SessionState Session
+@inject NavigationManager Nav
+@inject IExportService Export
+@inject IJSRuntime Js
+@inject ISnackbar Snackbar
+
+@if (!Session.IsAuthenticated || !Session.CanExport)
+{
+    <MudAlert Severity="Severity.Warning">Geen toegang tot export.</MudAlert>
+}
+else
+{
+    <MudText Typo="Typo.h4" Class="mb-3">Excel-export</MudText>
+    <MudStack Row="true" Class="mb-4">
+        <MudNumericField T="int" @bind-Value="_year" Label="Jaar" Variant="Variant.Outlined" Style="width:110px" />
+        <MudNumericField T="int" @bind-Value="_week" Label="Week" Variant="Variant.Outlined" Style="width:90px" />
+    </MudStack>
+    <MudStack Spacing="2" Style="max-width:420px">
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="ExportWorkplace" Disabled="_busy">Planning per werkplek</MudButton>
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="ExportEmployee" Disabled="_busy">Planning per medewerker</MudButton>
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="ExportCapacity" Disabled="_busy">Benodigd vs gepland</MudButton>
+        <MudButton Variant="Variant.Outlined" OnClick="ExportEmployees" Disabled="_busy">Medewerkersoverzicht</MudButton>
+    </MudStack>
+}
+
+@code {
+    private int _year;
+    private int _week;
+    private bool _busy;
+
+    protected override void OnInitialized()
+    {
+        if (!Session.IsAuthenticated) { Nav.NavigateTo("/login"); return; }
+        (_year, _week) = WeekHelper.CurrentIsoWeek();
+    }
+
+    private async Task ExportWorkplace() => await Download(await Export.ExportWorkplacePlanningAsync(_year, _week), $"planning-werkplek-{_year}-W{_week}.xlsx");
+    private async Task ExportEmployee() => await Download(await Export.ExportEmployeePlanningAsync(_year, _week), $"planning-medewerker-{_year}-W{_week}.xlsx");
+    private async Task ExportCapacity() => await Download(await Export.ExportCapacityAsync(_year, _week), $"capaciteit-{_year}-W{_week}.xlsx");
+    private async Task ExportEmployees() => await Download(await Export.ExportEmployeesAsync(), "medewerkers.xlsx");
+
+    private async Task Download(byte[] bytes, string fileName)
+    {
+        _busy = true;
+        try
+        {
+            var base64 = Convert.ToBase64String(bytes);
+            await Js.InvokeVoidAsync("eval", $@"
+                const a = document.createElement('a');
+                a.href = 'data:application/vnd.openxmlformats-officedocument.spreadsheetml.sheet;base64,{base64}';
+                a.download = '{fileName}';
+                a.click();
+            ");
+            Snackbar.Add($"Gedownload: {fileName}", Severity.Success);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add(ex.Message, Severity.Error);
+        }
+        finally { _busy = false; }
+    }
+}

@@ -1,0 +1,155 @@
+@page "/beheer/afwezigheid"
+@inject SessionState Session
+@inject NavigationManager Nav
+@inject IMasterDataService Master
+@inject ISnackbar Snackbar
+
+@if (!Session.CanManageMasterData)
+{
+    <MudAlert Severity="Severity.Warning">Geen toegang.</MudAlert>
+}
+else
+{
+    <MudStack Row="true" Justify="Justify.SpaceBetween" Class="mb-3">
+        <MudText Typo="Typo.h4">Afwezigheid</MudText>
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="NewItem">Nieuw</MudButton>
+    </MudStack>
+
+    <MudTable Items="_items" Dense="true" Hover="true">
+        <HeaderContent>
+            <MudTh>Medewerker</MudTh>
+            <MudTh>Van</MudTh>
+            <MudTh>Tot</MudTh>
+            <MudTh>Type</MudTh>
+            <MudTh>Status</MudTh>
+            <MudTh>Opmerking</MudTh>
+            <MudTh></MudTh>
+        </HeaderContent>
+        <RowTemplate>
+            <MudTd>@context.Employee?.DisplayName</MudTd>
+            <MudTd>@context.StartDate.ToString("dd-MM-yyyy")</MudTd>
+            <MudTd>@context.EndDate.ToString("dd-MM-yyyy")</MudTd>
+            <MudTd>@context.Type</MudTd>
+            <MudTd>@context.Status</MudTd>
+            <MudTd>@context.Remark</MudTd>
+            <MudTd><MudIconButton Icon="@Icons.Material.Filled.Edit" OnClick="@(() => Edit(context))" /></MudTd>
+        </RowTemplate>
+    </MudTable>
+
+    <MudDialog @bind-Visible="_dialog">
+        <TitleContent>Afwezigheid</TitleContent>
+        <DialogContent>
+            <MudAutocomplete T="Employee"
+                             Value="_selectedEmployee"
+                             ValueChanged="OnEmployeeChanged"
+                             SearchFunc="SearchEmployees"
+                             ToStringFunc="@(e => e?.DisplayName)"
+                             Label="Medewerker"
+                             Variant="Variant.Outlined"
+                             Class="mb-2"
+                             Dense="true"
+                             ResetValueOnEmptyText="true"
+                             CoerceText="true" />
+            <MudDatePicker Date="_start" DateChanged="v => { _start = v; if (v.HasValue) _edit.StartDate = DateOnly.FromDateTime(v.Value); }" Label="Van" Variant="Variant.Outlined" Class="mb-2" />
+            <MudDatePicker Date="_end" DateChanged="v => { _end = v; if (v.HasValue) _edit.EndDate = DateOnly.FromDateTime(v.Value); }" Label="Tot" Variant="Variant.Outlined" Class="mb-2" />
+            <MudSelect T="AbsenceType" @bind-Value="_edit.Type" Label="Type" Variant="Variant.Outlined" Class="mb-2">
+                @foreach (AbsenceType t in Enum.GetValues<AbsenceType>())
+                {
+                    <MudSelectItem Value="@t">@t</MudSelectItem>
+                }
+            </MudSelect>
+            <MudSelect T="AbsenceStatus" @bind-Value="_edit.Status" Label="Status" Variant="Variant.Outlined" Class="mb-2">
+                @foreach (AbsenceStatus s in Enum.GetValues<AbsenceStatus>())
+                {
+                    <MudSelectItem Value="@s">@s</MudSelectItem>
+                }
+            </MudSelect>
+            <MudTextField @bind-Value="_edit.Remark" Label="Opmerking" Variant="Variant.Outlined" />
+        </DialogContent>
+        <DialogActions>
+            <MudButton OnClick="@(() => _dialog = false)">Annuleren</MudButton>
+            <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="Save">Opslaan</MudButton>
+        </DialogActions>
+    </MudDialog>
+}
+
+@code {
+    private List<Absence> _items = [];
+    private List<Employee> _employees = [];
+    private Absence _edit = new();
+    private Employee? _selectedEmployee;
+    private bool _dialog;
+    private DateTime? _start;
+    private DateTime? _end;
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (!Session.IsAuthenticated) { Nav.NavigateTo("/login"); return; }
+        _employees = (await Master.GetEmployeesAsync())
+            .OrderBy(e => e.DisplayName, StringComparer.CurrentCultureIgnoreCase)
+            .ToList();
+        await Load();
+    }
+
+    private async Task Load() => _items = await Master.GetAbsencesAsync();
+
+    private Task<IEnumerable<Employee>> SearchEmployees(string value, CancellationToken ct)
+    {
+        IEnumerable<Employee> q = _employees;
+        if (!string.IsNullOrWhiteSpace(value))
+        {
+            q = q.Where(e => e.DisplayName.Contains(value, StringComparison.CurrentCultureIgnoreCase));
+        }
+
+        return Task.FromResult(q);
+    }
+
+    private void OnEmployeeChanged(Employee? employee)
+    {
+        _selectedEmployee = employee;
+        _edit.EmployeeId = employee?.Id ?? 0;
+    }
+
+    private void NewItem()
+    {
+        var today = DateOnly.FromDateTime(DateTime.Today);
+        _selectedEmployee = _employees.FirstOrDefault();
+        _edit = new Absence
+        {
+            EmployeeId = _selectedEmployee?.Id ?? 0,
+            StartDate = today,
+            EndDate = today,
+            Type = AbsenceType.Vacation,
+            Status = AbsenceStatus.Approved
+        };
+        _start = today.ToDateTime(TimeOnly.MinValue);
+        _end = _start;
+        _dialog = true;
+    }
+
+    private void Edit(Absence a)
+    {
+        _selectedEmployee = _employees.FirstOrDefault(e => e.Id == a.EmployeeId);
+        _edit = new Absence
+        {
+            Id = a.Id,
+            EmployeeId = a.EmployeeId,
+            StartDate = a.StartDate,
+            EndDate = a.EndDate,
+            Type = a.Type,
+            Status = a.Status,
+            Remark = a.Remark
+        };
+        _start = a.StartDate.ToDateTime(TimeOnly.MinValue);
+        _end = a.EndDate.ToDateTime(TimeOnly.MinValue);
+        _dialog = true;
+    }
+
+    private async Task Save()
+    {
+        await Master.SaveAbsenceAsync(_edit, Session.UserNameOrSystem);
+        _dialog = false;
+        Snackbar.Add("Opgeslagen", Severity.Success);
+        await Load();
+    }
+}

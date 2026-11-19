@@ -1,0 +1,43 @@
+@page "/beheer/audit"
+@inject SessionState Session
+@inject NavigationManager Nav
+@inject IAuditService Audit
+
+@if (!Session.CanManageMasterData)
+{
+    <MudAlert Severity="Severity.Warning">Geen toegang.</MudAlert>
+}
+else
+{
+    <MudText Typo="Typo.h4" Class="mb-3">Wijzigingshistorie</MudText>
+    <MudTable Items="_items" Dense="true" Hover="true">
+        <HeaderContent>
+            <MudTh>Tijd</MudTh>
+            <MudTh>Gebruiker</MudTh>
+            <MudTh>Entiteit</MudTh>
+            <MudTh>Actie</MudTh>
+            <MudTh>Oud</MudTh>
+            <MudTh>Nieuw</MudTh>
+            <MudTh>Reden</MudTh>
+        </HeaderContent>
+        <RowTemplate>
+            <MudTd>@context.At.ToLocalTime().ToString("g")</MudTd>
+            <MudTd>@context.UserName</MudTd>
+            <MudTd>@context.EntityType #@context.EntityId</MudTd>
+            <MudTd>@context.Action</MudTd>
+            <MudTd Style="max-width:180px;overflow:hidden;text-overflow:ellipsis">@context.OldValue</MudTd>
+            <MudTd Style="max-width:180px;overflow:hidden;text-overflow:ellipsis">@context.NewValue</MudTd>
+            <MudTd>@context.Reason</MudTd>
+        </RowTemplate>
+    </MudTable>
+}
+
+@code {
+    private List<AuditEntry> _items = [];
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (!Session.IsAuthenticated) { Nav.NavigateTo("/login"); return; }
+        _items = (await Audit.GetRecentAsync(200)).ToList();
+    }
+}

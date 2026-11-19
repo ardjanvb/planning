@@ -1,0 +1,135 @@
+@page "/beheer/werkplekken"
+@inject SessionState Session
+@inject NavigationManager Nav
+@inject IMasterDataService Master
+@inject ISnackbar Snackbar
+
+@if (!Session.CanManageMasterData)
+{
+    <MudAlert Severity="Severity.Warning">Geen toegang.</MudAlert>
+}
+else
+{
+    <MudStack Row="true" Justify="Justify.SpaceBetween" Class="mb-3">
+        <MudText Typo="Typo.h4">Werkplekken</MudText>
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="NewItem">Nieuw</MudButton>
+    </MudStack>
+
+    <MudTable Items="_items" Dense="true" Hover="true">
+        <HeaderContent>
+            <MudTh>Nummer</MudTh>
+            <MudTh>Naam</MudTh>
+            <MudTh>Afdeling</MudTh>
+            <MudTh>Min. bezetting</MudTh>
+            <MudTh>BHV</MudTh>
+            <MudTh>Vereisten</MudTh>
+            <MudTh></MudTh>
+        </HeaderContent>
+        <RowTemplate>
+            <MudTd>@context.ExternalNumber</MudTd>
+            <MudTd>@context.Name</MudTd>
+            <MudTd>@context.Department?.Name</MudTd>
+            <MudTd>@context.MinimumStaffing</MudTd>
+            <MudTd>@context.RequiredBhvCount</MudTd>
+            <MudTd>
+                @string.Join(", ", context.Requirements.Select(r =>
+                    r.JobFunction?.Name ?? r.Qualification?.Name ?? "?"))
+            </MudTd>
+            <MudTd><MudIconButton Icon="@Icons.Material.Filled.Edit" OnClick="@(() => Edit(context))" /></MudTd>
+        </RowTemplate>
+    </MudTable>
+
+    <MudDialog @bind-Visible="_dialog" Options="new DialogOptions { MaxWidth = MaxWidth.Small, FullWidth = true }">
+        <TitleContent>Werkplek</TitleContent>
+        <DialogContent>
+            <MudTextField @bind-Value="_edit.ExternalNumber" Label="Werkpleknummer" Variant="Variant.Outlined" Class="mb-2" />
+            <MudTextField @bind-Value="_edit.Name" Label="Naam" Variant="Variant.Outlined" Class="mb-2" />
+            <MudSelect T="int?" @bind-Value="_edit.DepartmentId" Label="Afdeling" Variant="Variant.Outlined" Class="mb-2" Clearable="true">
+                @foreach (var d in _departments)
+                {
+                    <MudSelectItem T="int?" Value="@((int?)d.Id)">@d.Name</MudSelectItem>
+                }
+            </MudSelect>
+            <MudNumericField T="int" @bind-Value="_edit.MinimumStaffing" Label="Minimale bezetting" Variant="Variant.Outlined" Class="mb-2" />
+            <MudNumericField T="int" @bind-Value="_edit.RequiredBhvCount" Label="Benodigde BHV" Variant="Variant.Outlined" Class="mb-2" />
+            <MudSwitch @bind-Value="_edit.Active" Label="Actief" Color="Color.Primary" />
+            <MudTextField @bind-Value="_edit.Description" Label="Omschrijving" Variant="Variant.Outlined" Class="mb-2" />
+            <MudSelect T="int" MultiSelection="true" @bind-SelectedValues="_selectedQuals" Label="Vereiste kwalificaties" Variant="Variant.Outlined">
+                @foreach (var q in _qualifications)
+                {
+                    <MudSelectItem T="int" Value="q.Id">@q.Name</MudSelectItem>
+                }
+            </MudSelect>
+        </DialogContent>
+        <DialogActions>
+            <MudButton OnClick="@(() => _dialog = false)">Annuleren</MudButton>
+            <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="Save">Opslaan</MudButton>
+        </DialogActions>
+    </MudDialog>
+}
+
+@code {
+    private List<Workplace> _items = [];
+    private List<Department> _departments = [];
+    private List<Qualification> _qualifications = [];
+    private Workplace _edit = new();
+    private bool _dialog;
+    private IReadOnlyCollection<int> _selectedQuals = Array.Empty<int>();
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (!Session.IsAuthenticated) { Nav.NavigateTo("/login"); return; }
+        _departments = await Master.GetDepartmentsAsync();
+        _qualifications = await Master.GetQualificationsAsync();
+        await Load();
+    }
+
+    private async Task Load() => _items = await Master.GetWorkplacesAsync(true);
+
+    private void NewItem()
+    {
+        _edit = new Workplace { Active = true, MinimumStaffing = 1 };
+        _selectedQuals = Array.Empty<int>();
+        _dialog = true;
+    }
+
+    private void Edit(Workplace w)
+    {
+        _edit = new Workplace
+        {
+            Id = w.Id,
+            ExternalNumber = w.ExternalNumber,
+            Name = w.Name,
+            DepartmentId = w.DepartmentId,
+            Description = w.Description,
+            Active = w.Active,
+            MinimumStaffing = w.MinimumStaffing,
+            RequiredBhvCount = w.RequiredBhvCount,
+            Remarks = w.Remarks
+        };
+        _selectedQuals = w.Requirements.Where(r => r.QualificationId.HasValue).Select(r => r.QualificationId!.Value).ToList();
+        _dialog = true;
+    }
+
+    private async Task Save()
+    {
+        try
+        {
+            var saved = await Master.SaveWorkplaceAsync(_edit, Session.UserNameOrSystem);
+            var reqs = _selectedQuals.Select(qid => new WorkplaceRequirement
+            {
+                WorkplaceId = saved.Id,
+                QualificationId = qid,
+                RequiredCount = 1
+            });
+            await Master.SaveWorkplaceRequirementsAsync(saved.Id, reqs);
+            _dialog = false;
+            Snackbar.Add("Opgeslagen", Severity.Success);
+            await Load();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add(ex.Message, Severity.Error);
+        }
+    }
+}

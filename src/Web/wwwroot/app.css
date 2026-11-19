@@ -1,0 +1,205 @@
+html, body {
+    font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
+    margin: 0;
+    height: 100%;
+}
+
+a, .btn-link {
+    color: #006bb7;
+}
+
+.btn-primary {
+    color: #fff;
+    background-color: #1b6ec2;
+    border-color: #1861ac;
+}
+
+.content {
+    padding-top: 1.1rem;
+    padding-bottom: 3rem;
+}
+
+#blazor-error-ui {
+    background: lightyellow;
+    bottom: 0;
+    box-shadow: 0 -1px 2px rgba(0, 0, 0, 0.2);
+    display: none;
+    left: 0;
+    padding: 0.6rem 1.25rem 0.7rem 1.25rem;
+    position: fixed;
+    width: 100%;
+    z-index: 2000;
+}
+
+#blazor-error-ui .dismiss {
+    cursor: pointer;
+    position: absolute;
+    right: 0.75rem;
+    top: 0.5rem;
+}
+
+/* Operator machine tiles */
+.machine-tile-strip {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.75rem;
+}
+
+.machine-tile {
+    min-width: 140px;
+    flex: 1 1 140px;
+    max-width: 200px;
+    border: 2px solid #ccc;
+    border-radius: 6px;
+    padding: 0.65rem 0.75rem;
+    background: #fff;
+    box-shadow: 0 1px 2px rgba(0,0,0,0.06);
+}
+
+.machine-tile.released {
+    border-color: #2e7d32;
+    background: #f1f8f2;
+}
+
+.machine-tile.unavailable {
+    border-color: #c62828;
+    background: #fdf2f2;
+}
+
+.machine-tile-name {
+    font-weight: 600;
+    font-size: 0.95rem;
+    margin-bottom: 0.25rem;
+}
+
+.machine-tile-meta {
+    font-size: 0.75rem;
+    color: #555;
+}
+
+.order-band {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 1.25rem 1.75rem;
+    padding: 0.85rem 1rem;
+    background: #fff;
+    border: 1px solid #dde2e6;
+    border-radius: 6px;
+}
+
+.order-band-item label {
+    display: block;
+    font-size: 0.7rem;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: #777;
+    margin-bottom: 0.15rem;
+}
+
+.order-band-item span {
+    font-weight: 600;
+    font-size: 0.95rem;
+}
+
+.process-step-item {
+    cursor: pointer;
+    border-radius: 4px;
+    padding: 0.45rem 0.5rem;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.process-step-item:hover {
+    background: rgba(0,0,0,0.04);
+}
+
+.process-step-item.selected {
+    background: rgba(27, 110, 194, 0.12);
+}
+
+.trend-line-svg {
+    width: 100%;
+    height: 340px;
+    background: #fff;
+    border: 1px solid #e0e0e0;
+    border-radius: 4px;
+}
+
+.trend-line {
+    stroke: #1565c0;
+    stroke-width: 2;
+}
+
+.axis-line {
+    stroke: #424242;
+    stroke-width: 1.25;
+}
+
+.grid-line {
+    stroke: #e0e0e0;
+    stroke-width: 1;
+}
+
+.axis-label {
+    font-size: 11px;
+    fill: #616161;
+}
+
+.axis-title {
+    font-size: 11px;
+    fill: #424242;
+    font-weight: 600;
+}
+
+.limit-line {
+    stroke: #c62828;
+    stroke-width: 1.25;
+    stroke-dasharray: 6 4;
+}
+
+.limit-label {
+    font-size: 11px;
+    fill: #c62828;
+    font-weight: 600;
+}
+
+.trend-point {
+    stroke: #fff;
+    stroke-width: 1.5;
+    cursor: pointer;
+}
+
+.point-pass { fill: #2e7d32; }
+.point-fail { fill: #c62828; }
+
+.point-selected {
+    stroke: #0d47a1;
+    stroke-width: 2;
+}
+
+.selected-row {
+    background-color: rgba(21, 101, 192, 0.08) !important;
+}
+
+.path-cell {
+    font-family: Consolas, 'Courier New', monospace;
+    font-size: 0.8rem;
+    word-break: break-all;
+}
+
+.fir-preview-frame {
+    width: 100%;
+    height: 70vh;
+    border: 1px solid #ccc;
+    border-radius: 4px;
+}
+
+.matrix-highlight-row {
+    background-color: rgba(255, 193, 7, 0.25) !important;
+}
+
+.matrix-highlight-cell {
+    outline: 2px solid #ff9800;
+    background-color: rgba(255, 152, 0, 0.18) !important;
+}
