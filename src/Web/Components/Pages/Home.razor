@@ -16,14 +16,26 @@ else if (_overview is null)
 }
 else
 {
-    <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center" Class="mb-3">
-        <div>
+    <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center" Class="mb-3 matrix-header" Wrap="Wrap.Wrap">
+        <MudStack Spacing="1">
             <MudText Typo="Typo.h4">Planningsmatrix</MudText>
-            <MudText Typo="Typo.subtitle2" Class="mud-text-secondary">
-                Status: @_overview.Plan.Status · versie @_overview.Plan.Version
-            </MudText>
-        </div>
-        <MudStack Row="true" Spacing="2">
+            <MudStack Row="true" Spacing="1" AlignItems="AlignItems.Center" Wrap="Wrap.Wrap">
+                <MudText Typo="Typo.subtitle2" Class="mud-text-secondary">
+                    Status: @_overview.Plan.Status · versie @_overview.Plan.Version
+                </MudText>
+                @if (Session.CanEditPlanning)
+                {
+                    <MudButton Variant="Variant.Outlined" Size="Size.Small" OnClick="@(() => SetStatus(WeekPlanStatus.Checked))">Gecontroleerd</MudButton>
+                    <MudButton Variant="Variant.Outlined" Size="Size.Small" OnClick="@(() => SetStatus(WeekPlanStatus.PendingApproval))">Ter goedkeuring</MudButton>
+                }
+                @if (Session.CanApprove)
+                {
+                    <MudButton Variant="Variant.Filled" Color="Color.Success" Size="Size.Small" OnClick="@(() => SetStatus(WeekPlanStatus.Approved))">Goedkeuren</MudButton>
+                    <MudButton Variant="Variant.Filled" Color="Color.Primary" Size="Size.Small" OnClick="@(() => SetStatus(WeekPlanStatus.Published))">Publiceren</MudButton>
+                }
+            </MudStack>
+        </MudStack>
+        <MudStack Row="true" Spacing="2" AlignItems="AlignItems.End">
             <MudNumericField T="int" @bind-Value="_year" Label="Jaar" Variant="Variant.Outlined" Margin="Margin.Dense" Style="width:110px" />
             <MudNumericField T="int" @bind-Value="_week" Label="Week" Variant="Variant.Outlined" Margin="Margin.Dense" Style="width:90px" />
             <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="Reload">Laden</MudButton>
@@ -47,61 +59,66 @@ else
                     <MudSelectItem T="int?" Value="@((int?)d.Id)">@d.Name</MudSelectItem>
                 }
             </MudSelect>
-            <MudSelect T="int?" @bind-Value="_crewId" Label="Ploeg" Variant="Variant.Outlined" Margin="Margin.Dense"
-                       Clearable="true" Style="min-width:160px">
+            <MudSelect T="int" Value="@(_crewId ?? 0)" ValueChanged="OnCrewChanged" Label="Ploeg"
+                       Variant="Variant.Outlined" Margin="Margin.Dense" Style="min-width:160px">
+                <MudSelectItem T="int" Value="0">Alle ploegen</MudSelectItem>
                 @foreach (var c in _crews)
                 {
-                    <MudSelectItem T="int?" Value="@((int?)c.Id)">@c.Name</MudSelectItem>
+                    <MudSelectItem T="int" Value="@c.Id">@c.Name</MudSelectItem>
                 }
             </MudSelect>
         </MudStack>
     </MudPaper>
 
-    <MudGrid Class="mb-3">
-        <MudItem xs="12" md="8">
+    <div class="matrix-wrap">
             <MudPaper Class="pa-2" Elevation="1">
                 <MudTabs @bind-ActivePanelIndex="_tab">
                     <MudTabPanel Text="@($"Per werkplek ({FilteredWorkplaces.Count})")">
-                        <MudTable Items="FilteredWorkplaces" Dense="true" Hover="true" Class="mt-2" Breakpoint="Breakpoint.None">
+                        <MudTable Items="FilteredWorkplaces" Dense="true" Hover="true" Class="mt-2 matrix-table" Breakpoint="Breakpoint.None" @key="@($"wp-{FilterKey}")">
                             <HeaderContent>
-                                <MudTh>Werkplek</MudTh>
+                                <MudTh Class="matrix-name">Werkplek</MudTh>
                                 @foreach (var day in _overview.Days)
                                 {
-                                    <MudTh>@WeekHelper.DayLabel(day)<br /><small>@day.ToString("dd-MM")</small></MudTh>
+                                    <MudTh Class="matrix-day">@WeekHelper.DayLabel(day)<br /><small>@day.ToString("dd-MM")</small></MudTh>
                                 }
-                                <MudTh>Uren</MudTh>
+                                <MudTh Class="matrix-hours">Uren</MudTh>
                             </HeaderContent>
                             <RowTemplate>
                                 <MudTd DataLabel="Werkplek" id="@($"wp-row-{context.WorkplaceId}")"
-                                       Class="@RowHighlightClass(workplaceId: context.WorkplaceId)">
+                                       Class="@($"{RowHighlightClass(workplaceId: context.WorkplaceId)} matrix-name")">
                                     <strong>@context.ExternalNumber</strong><br />@context.WorkplaceName
                                 </MudTd>
                                 @foreach (var day in _overview.Days)
                                 {
                                     var cell = context.Days[day];
-                                    <MudTd Class="@CellHighlightClass(workplaceId: context.WorkplaceId, date: day)"
+                                    <MudTd Class="@DayCellClass(CellHighlightClass(workplaceId: context.WorkplaceId, date: day))"
                                            id="@($"cell-wp-{context.WorkplaceId}-{day:yyyyMMdd}")">
-                                        @if (cell.ClosedShifts is { Count: > 0 })
-                                        {
-                                            @foreach (var shift in cell.ClosedShifts)
+                                        <div class="matrix-cell">
+                                            @if (cell.ClosedShifts is { Count: > 0 })
                                             {
-                                                <MudChip T="string" Size="Size.Small" Color="Color.Default" Variant="Variant.Outlined" Class="ma-0 mb-1">
-                                                    @shift dicht
-                                                </MudChip>
+                                                @foreach (var shift in cell.ClosedShifts)
+                                                {
+                                                    <MudChip T="string" Size="Size.Small" Color="Color.Default" Variant="Variant.Outlined"
+                                                             Class="matrix-chip" title="@($"{shift} dicht")">
+                                                        @shift dicht
+                                                    </MudChip>
+                                                }
                                             }
-                                        }
-                                        @foreach (var a in cell.Assignments)
-                                        {
-                                            @RenderAssignmentChip($"{a.EmployeeName ?? "?"} · {a.ShiftName}", a)
-                                        }
-                                        @if (Session.CanEditPlanning && cell.CanAssign)
-                                        {
-                                            <MudIconButton Icon="@Icons.Material.Filled.Add" Size="Size.Small"
-                                                           OnClick="@(() => OpenAssignWorkplace(context.WorkplaceId, day))" />
-                                        }
+                                            @foreach (var a in cell.Assignments)
+                                            {
+                                                @RenderAssignmentChip($"{a.EmployeeName ?? "?"} · {a.ShiftName}", a)
+                                            }
+                                            @if (Session.CanEditPlanning && cell.CanAssign)
+                                            {
+                                                <div class="matrix-add-line">
+                                                    <MudIconButton Icon="@Icons.Material.Filled.Add" Size="Size.Small" aria-label="Toevoegen"
+                                                                   OnClick="@(() => OpenAssignWorkplace(context.WorkplaceId, day))" />
+                                                </div>
+                                            }
+                                        </div>
                                     </MudTd>
                                 }
-                                <MudTd>
+                                <MudTd Class="matrix-hours">
                                     <span class="@(context.PlannedHours < context.RequiredHours ? "text-danger" : "")">
                                         @context.PlannedHours.ToString("0.##") / @context.RequiredHours.ToString("0.##")
                                     </span>
@@ -110,105 +127,103 @@ else
                         </MudTable>
                     </MudTabPanel>
                     <MudTabPanel Text="@($"Per medewerker ({FilteredEmployees.Count})")">
-                        <MudTable Items="FilteredEmployees" Dense="true" Hover="true" Class="mt-2" Breakpoint="Breakpoint.None">
+                        <MudTable Items="FilteredEmployees" Dense="true" Hover="true" Class="mt-2 matrix-table" Breakpoint="Breakpoint.None" @key="@($"emp-{FilterKey}")">
                             <HeaderContent>
-                                <MudTh>Medewerker</MudTh>
+                                <MudTh Class="matrix-name">Medewerker</MudTh>
                                 @foreach (var day in _overview.Days)
                                 {
-                                    <MudTh>@WeekHelper.DayLabel(day)<br /><small>@day.ToString("dd-MM")</small></MudTh>
+                                    <MudTh Class="matrix-day">@WeekHelper.DayLabel(day)<br /><small>@day.ToString("dd-MM")</small></MudTh>
                                 }
-                                <MudTh>Totaal</MudTh>
+                                <MudTh Class="matrix-hours">Totaal</MudTh>
                             </HeaderContent>
                             <RowTemplate>
                                 <MudTd id="@($"emp-row-{context.EmployeeId}")"
-                                       Class="@RowHighlightClass(employeeId: context.EmployeeId)">@context.EmployeeName</MudTd>
+                                       Class="@($"{RowHighlightClass(employeeId: context.EmployeeId)} matrix-name")">@context.EmployeeName</MudTd>
                                 @foreach (var day in _overview.Days)
                                 {
                                     var cell = context.Days[day];
                                     var employeeId = context.EmployeeId;
-                                    <MudTd Class="@CellHighlightClass(employeeId: employeeId, date: day)"
+                                    <MudTd Class="@DayCellClass(CellHighlightClass(employeeId: employeeId, date: day))"
                                            id="@($"cell-emp-{employeeId}-{day:yyyyMMdd}")">
-                                        @if (cell.HasApprovedAbsence)
-                                        {
-                                            @if (Session.CanEditPlanning)
+                                        <div class="matrix-cell">
+                                            @if (cell.HasApprovedAbsence)
                                             {
-                                                <MudChip T="string" Size="Size.Small" Color="Color.Warning" Class="ma-0 mb-1"
-                                                         OnClose="@(async (MudChip<string> _) => await RemoveLeave(employeeId, day))">
-                                                    Verlof
+                                                @if (Session.CanEditPlanning)
+                                                {
+                                                    <MudChip T="string" Size="Size.Small" Color="Color.Warning" Class="matrix-chip" title="Verlof"
+                                                             OnClose="@(async (MudChip<string> _) => await RemoveLeave(employeeId, day))">
+                                                        Verlof
+                                                    </MudChip>
+                                                }
+                                                else
+                                                {
+                                                    <MudChip T="string" Size="Size.Small" Color="Color.Warning" Class="matrix-chip" title="Verlof">
+                                                        Verlof
+                                                    </MudChip>
+                                                }
+                                            }
+                                            @if (cell.ClosedShifts is { Count: > 0 } && cell.IsFullyClosed && !cell.HasApprovedAbsence)
+                                            {
+                                                <MudChip T="string" Size="Size.Small" Color="Color.Default" Variant="Variant.Outlined" Class="matrix-chip" title="Shifts dicht">
+                                                    Shifts dicht
                                                 </MudChip>
                                             }
-                                            else
+                                            @foreach (var a in cell.Assignments)
                                             {
-                                                <MudChip T="string" Size="Size.Small" Color="Color.Warning" Class="ma-0 mb-1">
-                                                    Verlof
-                                                </MudChip>
+                                                @RenderAssignmentChip($"{a.WorkplaceName} · {a.ShiftName}", a)
                                             }
-                                        }
-                                        @if (cell.ClosedShifts is { Count: > 0 } && cell.IsFullyClosed && !cell.HasApprovedAbsence)
-                                        {
-                                            <MudChip T="string" Size="Size.Small" Color="Color.Default" Variant="Variant.Outlined" Class="ma-0 mb-1">
-                                                Shifts dicht
-                                            </MudChip>
-                                        }
-                                        @foreach (var a in cell.Assignments)
-                                        {
-                                            @RenderAssignmentChip($"{a.WorkplaceName} · {a.ShiftName}", a)
-                                        }
-                                        @if (Session.CanEditPlanning && cell.CanAssign)
-                                        {
-                                            <MudIconButton Icon="@Icons.Material.Filled.Add" Size="Size.Small"
-                                                           OnClick="@(() => OpenAssignEmployee(employeeId, day))" />
-                                        }
+                                            @if (Session.CanEditPlanning && cell.CanAssign)
+                                            {
+                                                <div class="matrix-add-line">
+                                                    <MudIconButton Icon="@Icons.Material.Filled.Add" Size="Size.Small" aria-label="Toevoegen"
+                                                                   OnClick="@(() => OpenAssignEmployee(employeeId, day))" />
+                                                </div>
+                                            }
+                                        </div>
                                     </MudTd>
                                 }
-                                <MudTd>@context.PlannedHours.ToString("0.##") / @context.ContractHours.ToString("0.##")</MudTd>
+                                <MudTd Class="matrix-hours">@context.PlannedHours.ToString("0.##") / @context.ContractHours.ToString("0.##")</MudTd>
                             </RowTemplate>
                         </MudTable>
                     </MudTabPanel>
                 </MudTabs>
             </MudPaper>
-        </MudItem>
-        <MudItem xs="12" md="4">
-            <MudPaper Class="pa-3 mb-3" Elevation="1">
-                <MudText Typo="Typo.h6">Waarschuwingen</MudText>
+    </div>
+
+    <MudExpansionPanels Class="mt-3" Elevation="1">
+        <MudExpansionPanel>
+            <TitleContent>
+                <div class="d-flex align-items-center gap-2">
+                    <MudIcon Icon="@WarningIcon" Color="@WarningColor" Size="Size.Small" />
+                    <MudText Typo="Typo.subtitle1">Waarschuwingen (@_overview.Conflicts.Count)</MudText>
+                </div>
+            </TitleContent>
+            <ChildContent>
                 @if (_overview.Conflicts.Count == 0)
                 {
-                    <MudAlert Severity="Severity.Success" Dense="true" Class="mt-2">Geen openstaande conflicten</MudAlert>
+                    <MudAlert Severity="Severity.Success" Dense="true">Geen openstaande conflicten</MudAlert>
                 }
                 else
                 {
-                    @foreach (var c in _overview.Conflicts.Take(20))
-                    {
-                        <div class="mt-2" style="cursor:pointer" @onclick="() => FocusConflict(c)">
-                            <MudAlert Severity="@(c.Severity == ConflictSeverity.Blocking ? Severity.Error : Severity.Warning)"
-                                      Dense="true">
-                                <strong>@c.Code</strong> — @c.Message
-                            </MudAlert>
-                        </div>
-                    }
+                    <div class="warning-list">
+                        @foreach (var c in _overview.Conflicts.Take(20))
+                        {
+                            <div class="mb-2" style="cursor:pointer" @onclick="() => FocusConflict(c)">
+                                <MudAlert Severity="@(c.Severity == ConflictSeverity.Blocking ? Severity.Error : Severity.Warning)"
+                                          Dense="true">
+                                    <strong>@c.Code</strong> — @c.Message
+                                </MudAlert>
+                            </div>
+                        }
+                        @if (_overview.Conflicts.Count > 20)
+                        {
+                            <MudText Typo="Typo.caption" Class="mud-text-secondary">Eerste 20 van @_overview.Conflicts.Count waarschuwingen.</MudText>
+                        }
+                    </div>
                 }
-            </MudPaper>
-
-            @if (Session.CanEditPlanning || Session.CanApprove)
-            {
-                <MudPaper Class="pa-3" Elevation="1">
-                    <MudText Typo="Typo.h6" Class="mb-2">Status</MudText>
-                    <MudStack Spacing="1">
-                        @if (Session.CanEditPlanning)
-                        {
-                            <MudButton Variant="Variant.Outlined" OnClick="@(() => SetStatus(WeekPlanStatus.Checked))">Gecontroleerd</MudButton>
-                            <MudButton Variant="Variant.Outlined" OnClick="@(() => SetStatus(WeekPlanStatus.PendingApproval))">Ter goedkeuring</MudButton>
-                        }
-                        @if (Session.CanApprove)
-                        {
-                            <MudButton Variant="Variant.Filled" Color="Color.Success" OnClick="@(() => SetStatus(WeekPlanStatus.Approved))">Goedkeuren</MudButton>
-                            <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="@(() => SetStatus(WeekPlanStatus.Published))">Publiceren</MudButton>
-                        }
-                    </MudStack>
-                </MudPaper>
-            }
-        </MudItem>
-    </MudGrid>
+            </ChildContent>
+        </MudExpansionPanel>
+    </MudExpansionPanels>
 }
 
 @code {
@@ -226,6 +241,35 @@ else
     private int? _highlightEmployeeId;
     private int? _highlightWorkplaceId;
     private DateOnly? _highlightDate;
+
+    private string FilterKey => $"{_crewId}|{_departmentId}|{_search}";
+
+    private string WarningIcon =>
+        _overview?.Conflicts.Any(c => c.Severity == ConflictSeverity.Blocking) == true
+            ? Icons.Material.Filled.Error
+            : _overview?.Conflicts.Count > 0
+                ? Icons.Material.Filled.Warning
+                : Icons.Material.Filled.CheckCircle;
+
+    private Color WarningColor =>
+        _overview?.Conflicts.Any(c => c.Severity == ConflictSeverity.Blocking) == true
+            ? Color.Error
+            : _overview?.Conflicts.Count > 0
+                ? Color.Warning
+                : Color.Success;
+
+    private void OnCrewChanged(int value) => _crewId = value == 0 ? null : value;
+
+    private HashSet<int>? SelectedCrewEmployeeIds()
+    {
+        if (_crewId is not int crewId)
+            return null;
+
+        return _employees
+            .Where(e => e.PrimaryCrewId == crewId)
+            .Select(e => e.Id)
+            .ToHashSet();
+    }
 
     private IReadOnlyList<WorkplaceWeekRow> FilteredWorkplaces
     {
@@ -246,8 +290,42 @@ else
                     r.ExternalNumber.Contains(_search, StringComparison.CurrentCultureIgnoreCase));
             }
 
+            if (SelectedCrewEmployeeIds() is { } crewIds)
+            {
+                q = q.Select(r => FilterWorkplaceToCrew(r, crewIds)).OfType<WorkplaceWeekRow>();
+            }
+
             return q.ToList();
         }
+    }
+
+    private static WorkplaceWeekRow? FilterWorkplaceToCrew(WorkplaceWeekRow row, HashSet<int> employeeIds)
+    {
+        var any = false;
+        var days = new Dictionary<DateOnly, WeekMatrixCell>(row.Days.Count);
+        foreach (var (date, cell) in row.Days)
+        {
+            var assignments = cell.Assignments
+                .Where(a => a.EmployeeId is int id && employeeIds.Contains(id))
+                .ToList();
+            if (assignments.Count > 0)
+                any = true;
+
+            days[date] = cell with
+            {
+                Assignments = assignments,
+                PlannedHours = assignments.Sum(a => a.PlannedHours)
+            };
+        }
+
+        if (!any)
+            return null;
+
+        return row with
+        {
+            Days = days,
+            PlannedHours = days.Values.Sum(d => d.PlannedHours)
+        };
     }
 
     private IReadOnlyList<EmployeeWeekRow> FilteredEmployees
@@ -256,10 +334,9 @@ else
         {
             if (_overview is null) return [];
             var q = _overview.ByEmployee.AsEnumerable();
-            if (_crewId is int crewId)
+            if (SelectedCrewEmployeeIds() is { } crewIds)
             {
-                var ids = _employees.Where(e => e.PrimaryCrewId == crewId).Select(e => e.Id).ToHashSet();
-                q = q.Where(r => ids.Contains(r.EmployeeId));
+                q = q.Where(r => crewIds.Contains(r.EmployeeId));
             }
 
             if (_departmentId is int deptId)
@@ -346,6 +423,9 @@ else
         return hit ? "matrix-highlight-row" : string.Empty;
     }
 
+    private static string DayCellClass(string highlight) =>
+        string.IsNullOrEmpty(highlight) ? "matrix-day" : $"matrix-day {highlight}";
+
     private string CellHighlightClass(DateOnly date, int? employeeId = null, int? workplaceId = null)
     {
         if (_highlightDate is null || _highlightDate != date) return string.Empty;
@@ -359,7 +439,7 @@ else
     {
         if (Session.CanEditPlanning)
         {
-            <MudChip T="string" Size="Size.Small" Color="Color.Primary" Class="ma-0 mb-1"
+            <MudChip T="string" Size="Size.Small" Color="Color.Primary" Class="matrix-chip" title="@label"
                      OnClick="@(() => MoveDialog(assignment))"
                      OnClose="@(async (MudChip<string> _) => await Remove(assignment.Id))">
                 @label
@@ -367,7 +447,7 @@ else
         }
         else
         {
-            <MudChip T="string" Size="Size.Small" Color="Color.Primary" Class="ma-0 mb-1">
+            <MudChip T="string" Size="Size.Small" Color="Color.Primary" Class="matrix-chip" title="@label">
                 @label
             </MudChip>
         }

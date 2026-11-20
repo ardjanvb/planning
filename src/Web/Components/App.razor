@@ -19,6 +19,9 @@
 <body>
     <Routes @rendermode="InteractiveServer" />
     <ReconnectModal />
+    <script>
+        window.planningIsNarrow = () => window.matchMedia("(max-width: 640.98px)").matches;
+    </script>
     <script src="@Assets["_framework/blazor.web.js"]"></script>
     <script src="_content/MudBlazor/MudBlazor.min.js"></script>
 </body>
