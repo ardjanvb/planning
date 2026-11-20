@@ -203,3 +203,71 @@ a, .btn-link {
     outline: 2px solid #ff9800;
     background-color: rgba(255, 152, 0, 0.18) !important;
 }
+
+.matrix-wrap .matrix-table table {
+    table-layout: fixed;
+    width: 100%;
+    min-width: 1320px;
+}
+
+.matrix-wrap .matrix-name {
+    width: 180px;
+    vertical-align: top;
+}
+
+.matrix-wrap .matrix-hours {
+    width: 96px;
+    vertical-align: top;
+}
+
+.matrix-wrap .matrix-day {
+    width: 148px;
+    min-width: 148px;
+    max-width: 148px;
+    vertical-align: top;
+}
+
+.matrix-cell {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 4px;
+    width: 100%;
+    min-width: 0;
+}
+
+.matrix-cell .matrix-chip {
+    width: 100%;
+    max-width: 100%;
+    margin: 0;
+    box-sizing: border-box;
+    justify-content: flex-start;
+    overflow: hidden;
+}
+
+.matrix-cell .matrix-chip .mud-chip-content {
+    display: block;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    min-width: 0;
+    flex: 1 1 auto;
+}
+
+.matrix-add-line {
+    display: flex;
+    width: 100%;
+}
+
+.matrix-add-line .mud-icon-button {
+    width: 100%;
+    height: 26px;
+    padding: 0;
+    border: 1px dashed rgba(0, 0, 0, 0.28);
+    border-radius: 16px;
+}
+
+.warning-list {
+    max-height: 280px;
+    overflow: auto;
+}

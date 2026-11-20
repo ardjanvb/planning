@@ -15,10 +15,46 @@ main {
 .top-row {
     background-color: #f7f7f7;
     border-bottom: 1px solid #d6d5d5;
-    justify-content: flex-end;
+    justify-content: space-between;
     height: 3.5rem;
     display: flex;
     align-items: center;
+}
+
+.menu-toggle {
+    display: inline-flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    gap: 5px;
+    width: 2.5rem;
+    height: 2.5rem;
+    border: 1px solid #c8c8c8;
+    border-radius: 6px;
+    background: #fff;
+    cursor: pointer;
+    padding: 0;
+    flex: 0 0 auto;
+}
+
+.menu-toggle:hover {
+    background: #eee;
+}
+
+.menu-toggle-bar {
+    display: block;
+    width: 1.1rem;
+    height: 2px;
+    background: #1b3a4b;
+    border-radius: 1px;
+}
+
+.sidebar-closed .sidebar {
+    display: none;
+}
+
+.sidebar-backdrop {
+    display: none;
 }
 
     .top-row ::deep a, .top-row ::deep .btn-link {
@@ -52,6 +88,29 @@ main {
     .top-row {
         justify-content: space-between;
     }
+
+    .sidebar {
+        display: none;
+    }
+
+    .page.sidebar-open .sidebar {
+        display: block;
+        position: fixed;
+        z-index: 20;
+        top: 0;
+        left: 0;
+        width: min(280px, 86vw);
+        height: 100vh;
+        overflow: auto;
+    }
+
+    .page.sidebar-open .sidebar-backdrop {
+        display: block;
+        position: fixed;
+        inset: 0;
+        background: rgba(0, 0, 0, 0.45);
+        z-index: 15;
+    }
 }
 
 @media (min-width: 641px) {
@@ -59,7 +118,11 @@ main {
         flex-direction: row;
     }
 
-    .sidebar {
+    .sidebar-backdrop {
+        display: none;
+    }
+
+    .page.sidebar-open .sidebar {
         width: 250px;
         height: 100vh;
         position: sticky;
@@ -98,4 +161,3 @@ main {
         right: 0.75rem;
         top: 0.5rem;
     }
-}

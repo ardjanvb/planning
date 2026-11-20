@@ -1,5 +1,6 @@
 @implements IDisposable
 @inject SessionState Session
+@inject IJSRuntime JS
 
 <div class="top-row ps-3 navbar navbar-dark">
     <div class="container-fluid">
@@ -7,9 +8,9 @@
     </div>
 </div>
 
-<input type="checkbox" title="Navigation menu" class="navbar-toggler" />
+<button type="button" class="navbar-toggler" title="Menu sluiten" aria-label="Menu sluiten" @onclick="OnToggle"></button>
 
-<div class="nav-scrollable" onclick="document.querySelector('.navbar-toggler').click()">
+<div class="nav-scrollable" @onclick="CloseOnNarrow">
     <nav class="nav flex-column">
         <div class="nav-section-label px-3">Planning</div>
         <div class="nav-item px-3">
@@ -73,7 +74,23 @@
 </div>
 
 @code {
+    [Parameter] public EventCallback OnToggle { get; set; }
+
     protected override void OnInitialized() => Session.Changed += OnChanged;
     private void OnChanged() => InvokeAsync(StateHasChanged);
+
+    private async Task CloseOnNarrow()
+    {
+        try
+        {
+            if (await JS.InvokeAsync<bool>("planningIsNarrow"))
+                await OnToggle.InvokeAsync();
+        }
+        catch (JSException)
+        {
+            // Script not ready yet; leave the menu as-is.
+        }
+    }
+
     public void Dispose() => Session.Changed -= OnChanged;
 }

@@ -20,15 +20,26 @@ else if (IsLoginPage)
 }
 else
 {
-    <div class="page">
+    <div class="page @(_sidebarOpen ? "sidebar-open" : "sidebar-closed")">
+        @if (_sidebarOpen)
+        {
+            <div class="sidebar-backdrop" @onclick="CloseSidebar"></div>
+        }
         <div class="sidebar">
-            <NavMenu />
+            <NavMenu OnToggle="ToggleSidebar" />
         </div>
 
         <main>
-            <div class="top-row px-4 d-flex align-items-center justify-content-end gap-3">
-                <span class="text-muted small">@Session.DisplayName (@AppRoles.DisplayName(Session.Role))</span>
-                <MudButton Variant="Variant.Text" Size="Size.Small" OnClick="Logout">Uitloggen</MudButton>
+            <div class="top-row px-4 d-flex align-items-center gap-3">
+                <button type="button" class="menu-toggle" @onclick="ToggleSidebar" aria-label="Menu" aria-expanded="@_sidebarOpen">
+                    <span class="menu-toggle-bar"></span>
+                    <span class="menu-toggle-bar"></span>
+                    <span class="menu-toggle-bar"></span>
+                </button>
+                <div class="d-flex align-items-center gap-3 ms-auto">
+                    <span class="text-muted small">@Session.DisplayName (@AppRoles.DisplayName(Session.Role))</span>
+                    <MudButton Variant="Variant.Text" Size="Size.Small" OnClick="Logout">Uitloggen</MudButton>
+                </div>
             </div>
 
             <article class="content px-4">
@@ -45,7 +56,11 @@ else
 </div>
 
 @code {
+    private bool _sidebarOpen = true;
     private bool IsLoginPage => Nav.ToBaseRelativePath(Nav.Uri).StartsWith("login", StringComparison.OrdinalIgnoreCase);
+
+    private void ToggleSidebar() => _sidebarOpen = !_sidebarOpen;
+    private void CloseSidebar() => _sidebarOpen = false;
 
     protected override void OnInitialized()
     {
